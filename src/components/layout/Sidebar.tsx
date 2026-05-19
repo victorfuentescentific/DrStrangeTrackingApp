@@ -25,7 +25,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/availability', label: 'My Availability', icon: CalendarCheck },
       { href: '/work-abroad',  label: 'Work Abroad',     icon: Plane },
-      { href: '/overview',     label: 'PM Overview',     icon: Users },
+      { href: '/overview',     label: 'Overview',        icon: Users },
     ],
   },
   {

@@ -6,7 +6,7 @@ export interface StoredUser {
   id: string
   name: string
   email: string
-  role: 'admin' | 'fte' | 'freelancer'
+  role: 'admin' | 'lead' | 'fte' | 'freelancer'
   locale: string | null
   employeeType: string | null
   workflow: string | null
@@ -26,7 +26,7 @@ export async function findUserByEmail(email: string): Promise<StoredUser | undef
     id:           data.id,
     name:         data.name,
     email:        data.email,
-    role:         data.role as 'admin' | 'fte' | 'freelancer',
+    role:         data.role as 'admin' | 'lead' | 'fte' | 'freelancer',
     locale:       data.locale ?? null,
     employeeType: data.employee_type ?? null,
     workflow:     data.workflow ?? null,
