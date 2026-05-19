@@ -85,8 +85,8 @@ export default function OverviewPage() {
         userId:       s.userId,
         userName:     u?.name ?? s.userId,
         employeeType: u?.employeeType ?? null,
-        locale:       u?.locale ?? s.locale,
-        workflow:     u?.workflow ?? s.workflow,
+        locale:       u?.locale ?? null,   // user's locale only — null = Management
+        workflow:     u?.workflow ?? null,
         submissions:  {},
       }
     }
