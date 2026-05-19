@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { StatusBadge } from '@/components/availability/StatusBadge'
 import { type AvailabilitySubmission } from '@/lib/availability-types'
+import { type UserSummary } from '@/app/api/users/route'
 
 interface UserRow {
   userId: string
   userName: string
   employeeType: string | null
   locale: string | null
+  workflow: string | null
   submissions: Record<string, AvailabilitySubmission>
 }
 
@@ -38,6 +40,7 @@ export default function OverviewPage() {
   const [loading, setLoading]     = useState(false)
   const [filterLocale, setFilterLocale]     = useState('')
   const [filterWorkflow, setFilterWorkflow] = useState('')
+  const [userMap2, setUserMap2] = useState<Record<string, UserSummary>>({})
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => {
@@ -46,6 +49,12 @@ export default function OverviewPage() {
     }).then(data => {
       if (data?.user?.role !== 'admin') { router.push('/'); return }
       setAuthed(true)
+      // Fetch user list for name resolution
+      fetch('/api/users').then(r => r.json()).then((users: UserSummary[]) => {
+        if (Array.isArray(users)) {
+          setUserMap2(Object.fromEntries(users.map(u => [u.id, u])))
+        }
+      })
     })
   }, [router])
 
@@ -67,15 +76,23 @@ export default function OverviewPage() {
     fetchData(ds)
   }, [authed, weekOffset, fetchData])
 
-  // Group by user
-  const userMap: Record<string, UserRow> = {}
+  // Group submissions by user, enrich with name from userMap2
+  const rowMap: Record<string, UserRow> = {}
   for (const s of submissions) {
-    if (!userMap[s.userId]) {
-      userMap[s.userId] = { userId: s.userId, userName: '', employeeType: null, locale: s.locale, submissions: {} }
+    if (!rowMap[s.userId]) {
+      const u = userMap2[s.userId]
+      rowMap[s.userId] = {
+        userId:       s.userId,
+        userName:     u?.name ?? s.userId,
+        employeeType: u?.employeeType ?? null,
+        locale:       u?.locale ?? s.locale,
+        workflow:     u?.workflow ?? s.workflow,
+        submissions:  {},
+      }
     }
-    userMap[s.userId].submissions[s.date] = s
+    rowMap[s.userId].submissions[s.date] = s
   }
-  const rows = Object.values(userMap)
+  const rows = Object.values(rowMap).sort((a, b) => a.userName.localeCompare(b.userName))
 
   const weekLabel = weekOffset === 0 ? 'This week'
     : weekOffset === -1 ? 'Last week'
@@ -136,8 +153,10 @@ export default function OverviewPage() {
               ) : rows.map(row => (
                 <tr key={row.userId} className="border-b border-gray-50 hover:bg-gray-50/50">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">{row.userId}</p>
-                    {row.locale && <p className="text-xs text-gray-400">{row.locale}</p>}
+                    <p className="font-medium text-gray-900">{row.userName}</p>
+                    <p className="text-xs text-gray-400">
+                      {[row.locale, row.workflow].filter(Boolean).join(' · ')}
+                    </p>
                   </td>
                   {dates.map(d => {
                     const s = row.submissions[d]
