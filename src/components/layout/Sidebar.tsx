@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ListChecks, Kanban, BarChart3, Bot,
   Settings, ChevronRight, CalendarDays, Calculator, Clock,
-  CalendarCheck, Users, Plane,
+  CalendarCheck, Users, Plane, ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -34,6 +34,12 @@ const NAV_SECTIONS = [
       { href: '/admin/hours',  label: 'Team Hours',      icon: Clock },
       { href: '/reports',      label: 'Reports',         icon: BarChart3 },
       { href: '/claude',       label: 'Claude AI',       icon: Bot },
+    ],
+  },
+  {
+    label: 'Admin',
+    items: [
+      { href: '/admin/submissions', label: 'Submissions', icon: ShieldCheck },
     ],
   },
 ]
