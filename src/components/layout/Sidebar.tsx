@@ -5,18 +5,37 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ListChecks, Kanban, BarChart3, Bot,
   Settings, ChevronRight, CalendarDays, Calculator, Clock,
+  CalendarCheck, Users, Plane,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const NAV_ITEMS = [
-  { href: '/',             label: 'Dashboard',    icon: LayoutDashboard },
-  { href: '/worksets',     label: 'Worksets',     icon: ListChecks },
-  { href: '/calendar',     label: 'Calendar',     icon: CalendarDays },
-  { href: '/projections',  label: 'Projections',  icon: Calculator },
-  { href: '/admin/hours',  label: 'Team Hours',   icon: Clock },
-  { href: '/planner',      label: 'Planner',      icon: Kanban },
-  { href: '/reports',      label: 'Reports',      icon: BarChart3 },
-  { href: '/claude',       label: 'Claude AI',    icon: Bot },
+const NAV_SECTIONS = [
+  {
+    label: 'Planning',
+    items: [
+      { href: '/',             label: 'Dashboard',       icon: LayoutDashboard },
+      { href: '/worksets',     label: 'Worksets',        icon: ListChecks },
+      { href: '/calendar',     label: 'Calendar',        icon: CalendarDays },
+      { href: '/projections',  label: 'Projections',     icon: Calculator },
+      { href: '/planner',      label: 'Planner',         icon: Kanban },
+    ],
+  },
+  {
+    label: 'Availability',
+    items: [
+      { href: '/availability', label: 'My Availability', icon: CalendarCheck },
+      { href: '/work-abroad',  label: 'Work Abroad',     icon: Plane },
+      { href: '/overview',     label: 'PM Overview',     icon: Users },
+    ],
+  },
+  {
+    label: 'Reporting',
+    items: [
+      { href: '/admin/hours',  label: 'Team Hours',      icon: Clock },
+      { href: '/reports',      label: 'Reports',         icon: BarChart3 },
+      { href: '/claude',       label: 'Claude AI',       icon: Bot },
+    ],
+  },
 ]
 
 export function Sidebar() {
@@ -38,33 +57,37 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        <div className="px-2 pb-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-            Main Menu
-          </p>
-        </div>
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors group',
-                active
-                  ? 'bg-brand-600 text-white'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white',
-              )}
-            >
-              <div className="flex items-center gap-2.5">
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                <span className="font-medium">{label}</span>
-              </div>
-              {active && <ChevronRight className="w-3 h-3 opacity-60" />}
-            </Link>
-          )
-        })}
+      <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+        {NAV_SECTIONS.map(section => (
+          <div key={section.label}>
+            <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+              {section.label}
+            </p>
+            <div className="space-y-0.5">
+              {section.items.map(({ href, label, icon: Icon }) => {
+                const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors',
+                      active
+                        ? 'bg-brand-600 text-white'
+                        : 'text-slate-400 hover:bg-slate-800 hover:text-white',
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Icon className="w-4 h-4 flex-shrink-0" />
+                      <span className="font-medium">{label}</span>
+                    </div>
+                    {active && <ChevronRight className="w-3 h-3 opacity-60" />}
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* Bottom */}
