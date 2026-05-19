@@ -1,6 +1,6 @@
 'use client'
 
-import { STATUS_CONFIG, type AvailabilityStatus } from '@/lib/availability'
+import { STATUS_CONFIG, type AvailabilityStatus } from '@/lib/availability-types'
 
 interface StatusBadgeProps {
   status: AvailabilityStatus

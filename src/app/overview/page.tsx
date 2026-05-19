@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { StatusBadge } from '@/components/availability/StatusBadge'
-import { type AvailabilitySubmission } from '@/lib/availability'
+import { type AvailabilitySubmission } from '@/lib/availability-types'
 
 interface UserRow {
   userId: string

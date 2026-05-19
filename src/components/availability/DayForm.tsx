@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FTE_ONLY_STATUSES, STATUS_CONFIG, type AvailabilityStatus } from '@/lib/availability'
+import { FTE_ONLY_STATUSES, STATUS_CONFIG, type AvailabilityStatus } from '@/lib/availability-types'
 
 const VALID_STATUSES_LIST: AvailabilityStatus[] = [
   'AVAILABLE','PTO','BH','NO','SL','WA','UL','DH','PATERNITY','OTHER',

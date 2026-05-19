@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { StatusBadge } from './StatusBadge'
 import { DayForm } from './DayForm'
-import { type AvailabilitySubmission, type AvailabilityStatus, STATUS_CONFIG } from '@/lib/availability'
+import { type AvailabilitySubmission, type AvailabilityStatus, STATUS_CONFIG } from '@/lib/availability-types'
 
 interface AvailabilityGridProps {
   userId: string
