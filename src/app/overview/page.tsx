@@ -582,8 +582,16 @@ export default function OverviewPage() {
                         </td>
                       )}
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900">{row.userName}</p>
-                        {row.workflow && <p className="text-xs text-gray-400">{row.workflow}</p>}
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-gray-900">{row.userName}</p>
+                          {row.employeeType === 'FTE' && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 leading-none">FTE</span>
+                          )}
+                          {row.employeeType === 'FREELANCER' && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-500 leading-none">FL</span>
+                          )}
+                        </div>
+                        {row.workflow && <p className="text-xs text-gray-400 mt-0.5">{row.workflow}</p>}
                       </td>
                       {dates.map(d => {
                         const s = row.submissions[d]
