@@ -79,29 +79,43 @@ function BatchModal({ dates, selectedUserIds, users, onApplied, onClose }: Batch
   async function apply() {
     if (!selectedDates.length || !selectedUserIds.length) return
     setSaving(true)
-    const total = selectedUserIds.length * selectedDates.length
-    let done = 0
-    for (const userId of selectedUserIds) {
-      const u = userById[userId]
-      for (const date of selectedDates) {
-        await fetch('/api/availability', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId,
-            date,
-            status,
-            availabilityHours: needsHours ? hours : null,
-            estimatedStartCet: null,
-            locale:   u?.locale   ?? null,
-            workflow: u?.workflow  ?? null,
-            notes:    '',
-          }),
-        })
-        done++
-        setProgress(Math.round((done / total) * 100))
-      }
+
+    // Build full task list: one entry per (user, date) pair
+    const tasks: Array<{ userId: string; date: string }> = []
+    for (const userId of selectedUserIds)
+      for (const date of selectedDates)
+        tasks.push({ userId, date })
+
+    const total       = tasks.length
+    let   done        = 0
+    const CONCURRENCY = 5
+
+    // Fan out with a sliding window — never more than CONCURRENCY in-flight
+    async function runTask(task: { userId: string; date: string }) {
+      const u = userById[task.userId]
+      await fetch('/api/availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId:            task.userId,
+          date:              task.date,
+          status,
+          availabilityHours: needsHours ? hours : null,
+          estimatedStartCet: null,
+          locale:            u?.locale   ?? null,
+          workflow:          u?.workflow  ?? null,
+          notes:             '',
+        }),
+      })
+      done++
+      setProgress(Math.round((done / total) * 100))
     }
+
+    // Process in chunks of CONCURRENCY
+    for (let i = 0; i < tasks.length; i += CONCURRENCY) {
+      await Promise.all(tasks.slice(i, i + CONCURRENCY).map(runTask))
+    }
+
     setSaving(false)
     onApplied()
   }

@@ -36,19 +36,32 @@ export async function GET(req: NextRequest) {
   const qLocale   = searchParams.get('locale') ?? undefined
   const qWorkflow = searchParams.get('workflow') ?? undefined
 
-  // Freelancers can only see their own data; FTEs and admins can see team data
-  const effectiveUserId =
-    session.role === 'freelancer' ? session.id : (qUserId ?? undefined)
+  // Scope rules — enforced server-side from JWT, never trusted from client params:
+  //   freelancer → own data only
+  //   fte / lead → their locale only (locale from JWT, not query param)
+  //   admin      → unrestricted
 
-  if (effectiveUserId) {
-    const data = await getAvailabilityByUser(effectiveUserId, qFrom, qTo)
+  if (session.role === 'freelancer') {
+    const data = await getAvailabilityByUser(session.id, qFrom, qTo)
     return NextResponse.json(data)
   }
 
-  // Admin/PM: range query with optional filters
+  if (session.role === 'fte' || session.role === 'lead') {
+    // Enforce locale from JWT — ignore any locale param the client sends
+    const enforcedLocale = session.locale ?? undefined
+    const data = await getAvailabilityRange(qFrom, qTo, {
+      locale:   enforcedLocale,
+      workflow: qWorkflow,
+      userId:   qUserId ?? undefined,
+    })
+    return NextResponse.json(data)
+  }
+
+  // Admin: unrestricted range query
   const data = await getAvailabilityRange(qFrom, qTo, {
-    locale: qLocale,
+    locale:   qLocale,
     workflow: qWorkflow,
+    userId:   qUserId ?? undefined,
   })
   return NextResponse.json(data)
 }
