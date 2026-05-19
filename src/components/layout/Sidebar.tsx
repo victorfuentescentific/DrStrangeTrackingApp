@@ -40,6 +40,7 @@ const NAV_SECTIONS = [
     label: 'Admin',
     items: [
       { href: '/admin/submissions', label: 'Submissions', icon: ShieldCheck },
+      { href: '/admin/users',       label: 'Users',       icon: Users },
     ],
   },
 ]
