@@ -92,7 +92,23 @@ export default function OverviewPage() {
     }
     rowMap[s.userId].submissions[s.date] = s
   }
-  const rows = Object.values(rowMap).sort((a, b) => a.userName.localeCompare(b.userName))
+
+  // Group by locale; null locale = Management (goes last)
+  const groupMap: Record<string, UserRow[]> = {}
+  for (const row of Object.values(rowMap)) {
+    const key = row.locale ?? '__management__'
+    if (!groupMap[key]) groupMap[key] = []
+    groupMap[key].push(row)
+  }
+  // Sort each group alphabetically by name
+  for (const key of Object.keys(groupMap)) {
+    groupMap[key].sort((a, b) => a.userName.localeCompare(b.userName))
+  }
+  // Locale keys alphabetically, management always last
+  const groupKeys = Object.keys(groupMap)
+    .filter(k => k !== '__management__')
+    .sort()
+  if (groupMap['__management__']) groupKeys.push('__management__')
 
   const weekLabel = weekOffset === 0 ? 'This week'
     : weekOffset === -1 ? 'Last week'
@@ -148,34 +164,47 @@ export default function OverviewPage() {
             <tbody>
               {loading ? (
                 <tr><td colSpan={6} className="text-center py-8 text-gray-400">Loading…</td></tr>
-              ) : rows.length === 0 ? (
+              ) : groupKeys.length === 0 ? (
                 <tr><td colSpan={6} className="text-center py-8 text-gray-400">No submissions for this period</td></tr>
-              ) : rows.map(row => (
-                <tr key={row.userId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">{row.userName}</p>
-                    <p className="text-xs text-gray-400">
-                      {[row.locale, row.workflow].filter(Boolean).join(' · ')}
-                    </p>
-                  </td>
-                  {dates.map(d => {
-                    const s = row.submissions[d]
-                    return (
-                      <td key={d} className="px-2 py-3 text-center">
-                        {s ? (
-                          <div className="flex flex-col items-center gap-0.5">
-                            <StatusBadge status={s.status} employeeType={row.employeeType} hours={s.availabilityHours} size="sm" />
-                            {s.estimatedStartCet && (
-                              <span className="text-[10px] text-gray-400">{s.estimatedStartCet.slice(0,5)}</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-gray-200">—</span>
+              ) : groupKeys.map(key => (
+                <>
+                  {/* Group header */}
+                  <tr key={`header-${key}`} className="bg-slate-50 border-y border-slate-200">
+                    <td colSpan={dates.length + 1} className="px-4 py-2">
+                      <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                        {key === '__management__' ? 'Management' : key.replace('_', '-')}
+                      </span>
+                    </td>
+                  </tr>
+                  {/* User rows */}
+                  {groupMap[key].map(row => (
+                    <tr key={row.userId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-gray-900">{row.userName}</p>
+                        {row.workflow && (
+                          <p className="text-xs text-gray-400">{row.workflow}</p>
                         )}
                       </td>
-                    )
-                  })}
-                </tr>
+                      {dates.map(d => {
+                        const s = row.submissions[d]
+                        return (
+                          <td key={d} className="px-2 py-3 text-center">
+                            {s ? (
+                              <div className="flex flex-col items-center gap-0.5">
+                                <StatusBadge status={s.status} employeeType={row.employeeType} hours={s.availabilityHours} size="sm" />
+                                {s.estimatedStartCet && (
+                                  <span className="text-[10px] text-gray-400">{s.estimatedStartCet.slice(0,5)}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-200">—</span>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </>
               ))}
             </tbody>
           </table>
