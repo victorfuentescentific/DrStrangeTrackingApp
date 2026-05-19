@@ -47,7 +47,7 @@ export default function OverviewPage() {
       if (r.status === 401) { router.push('/login'); return }
       return r.json()
     }).then(data => {
-      if (data?.user?.role !== 'admin') { router.push('/'); return }
+      if (!['admin','fte'].includes(data?.user?.role)) { router.push('/'); return }
       setAuthed(true)
       // Fetch user list for name resolution
       fetch('/api/users').then(r => r.json()).then((users: UserSummary[]) => {

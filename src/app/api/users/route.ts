@@ -20,7 +20,7 @@ export async function GET() {
   const session = await verifyToken(token)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Only admins and PMs can fetch the full user list
+  // Freelancers cannot fetch the full user list; FTEs and admins can
   if (session.role === 'freelancer')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 

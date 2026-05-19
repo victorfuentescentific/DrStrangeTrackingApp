@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   const qLocale   = searchParams.get('locale') ?? undefined
   const qWorkflow = searchParams.get('workflow') ?? undefined
 
-  // Freelancers can only see their own data
+  // Freelancers can only see their own data; FTEs and admins can see team data
   const effectiveUserId =
     session.role === 'freelancer' ? session.id : (qUserId ?? undefined)
 
@@ -64,8 +64,8 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  // Freelancers can only submit for themselves
-  const userId = session.role === 'freelancer' ? session.id : (body.userId as string ?? session.id)
+  // Freelancers and FTEs can only submit for themselves; admins can submit for anyone
+  const userId = session.role !== 'admin' ? session.id : (body.userId as string ?? session.id)
   const status = body.status as AvailabilityStatus
   const errors: string[] = []
 
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
   if (!VALID_STATUSES.includes(status))
     errors.push(`status must be one of: ${VALID_STATUSES.join(', ')}`)
 
-  // Block freelancers from FTE-only statuses
+  // Block freelancers (not FTEs) from FTE-only statuses
   if (session.role === 'freelancer' && FTE_ONLY_STATUSES.includes(status))
     errors.push(`status ${status} is not available for freelancers`)
 
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (session.role === 'freelancer')
+  if (session.role !== 'admin')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const id = req.nextUrl.searchParams.get('id')

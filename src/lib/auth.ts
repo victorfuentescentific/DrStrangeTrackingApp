@@ -10,7 +10,7 @@ export interface SessionUser {
   id: string
   name: string
   email: string
-  role: 'admin' | 'freelancer'
+  role: 'admin' | 'fte' | 'freelancer'
   locale: string | null
   employeeType: string | null
   workflow: string | null
@@ -31,7 +31,7 @@ export async function verifyToken(token: string): Promise<SessionUser | null> {
       id:           payload.id as string,
       name:         payload.name as string,
       email:        payload.email as string,
-      role:         payload.role as 'admin' | 'freelancer',
+      role:         payload.role as 'admin' | 'fte' | 'freelancer',
       locale:       (payload.locale as string | null) ?? null,
       employeeType: (payload.employeeType as string | null) ?? null,
       workflow:     (payload.workflow as string | null) ?? null,
