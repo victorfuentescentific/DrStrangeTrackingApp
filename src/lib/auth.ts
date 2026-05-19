@@ -12,6 +12,8 @@ export interface SessionUser {
   email: string
   role: 'admin' | 'freelancer'
   locale: string | null
+  employeeType: string | null
+  workflow: string | null
 }
 
 export async function signToken(user: SessionUser): Promise<string> {
@@ -26,11 +28,13 @@ export async function verifyToken(token: string): Promise<SessionUser | null> {
   try {
     const { payload } = await jwtVerify(token, SECRET)
     return {
-      id: payload.id as string,
-      name: payload.name as string,
-      email: payload.email as string,
-      role: payload.role as 'admin' | 'freelancer',
-      locale: (payload.locale as string | null) ?? null,
+      id:           payload.id as string,
+      name:         payload.name as string,
+      email:        payload.email as string,
+      role:         payload.role as 'admin' | 'freelancer',
+      locale:       (payload.locale as string | null) ?? null,
+      employeeType: (payload.employeeType as string | null) ?? null,
+      workflow:     (payload.workflow as string | null) ?? null,
     }
   } catch {
     return null

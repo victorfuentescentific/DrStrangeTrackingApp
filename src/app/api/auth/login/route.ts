@@ -26,11 +26,13 @@ export async function POST(request: NextRequest) {
   }
 
   const sessionUser = {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    locale: user.locale,
+    id:           user.id,
+    name:         user.name,
+    email:        user.email,
+    role:         user.role,
+    locale:       user.locale,
+    employeeType: user.employeeType ?? null,
+    workflow:     user.workflow ?? null,
   }
 
   const token = await signToken(sessionUser)

@@ -8,13 +8,15 @@ export interface StoredUser {
   email: string
   role: 'admin' | 'freelancer'
   locale: string | null
+  employeeType: string | null
+  workflow: string | null
   passwordHash: string
 }
 
 export async function findUserByEmail(email: string): Promise<StoredUser | undefined> {
   const { data, error } = await db
     .from('users')
-    .select('id, name, email, role, locale, password_hash')
+    .select('id, name, email, role, locale, employee_type, workflow, password_hash')
     .ilike('email', email)
     .maybeSingle()
 
@@ -26,6 +28,8 @@ export async function findUserByEmail(email: string): Promise<StoredUser | undef
     email:        data.email,
     role:         data.role as 'admin' | 'freelancer',
     locale:       data.locale ?? null,
+    employeeType: data.employee_type ?? null,
+    workflow:     data.workflow ?? null,
     passwordHash: data.password_hash,
   }
 }
