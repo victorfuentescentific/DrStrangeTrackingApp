@@ -1,7 +1,6 @@
 'use client'
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import {
   Workset, Notification, FilterState, User, ClaudeCommand, ClaudeCommandResult,
   WorksetStatus,
@@ -25,7 +24,7 @@ interface AppStore {
   isInitialized: boolean
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
-  initialize: () => void
+  initialize: () => Promise<void>
   addWorkset: (data: Omit<Workset, 'id' | 'worksetId' | 'createdAt' | 'updatedAt' | 'auditTrail'>) => Workset
   updateWorkset: (id: string, updates: Partial<Workset>, reason?: string) => void
   deleteWorkset: (id: string) => void
@@ -70,20 +69,34 @@ const DEFAULT_FILTERS: FilterState = {
 }
 
 export const useStore = create<AppStore>()(
-  persist(
     (set, get) => ({
-      worksets: MOCK_WORKSETS,
+      worksets: [],
       notifications: [],
       currentUser: MOCK_USERS[0],
       filters: DEFAULT_FILTERS,
       isNotificationPanelOpen: false,
       isInitialized: false,
 
-      initialize: () => {
+      initialize: async () => {
         if (get().isInitialized) return
-        const worksets = get().worksets
 
-        // Auto-update overdue status
+        // Load worksets from Supabase via API
+        let worksets: Workset[] = []
+        try {
+          const res = await fetch('/api/worksets')
+          if (res.ok) {
+            const data = await res.json()
+            worksets = Array.isArray(data) ? data : []
+          }
+        } catch {
+          // Network error — fall back to mock data so the app is usable
+          worksets = MOCK_WORKSETS
+        }
+
+        // If DB is empty, seed with mock data
+        if (worksets.length === 0) worksets = MOCK_WORKSETS
+
+        // Auto-update overdue status (local only — DB update fires separately)
         const updated = worksets.map(ws => {
           if (ws.status === 'completed') return ws
           const effectiveEta = ws.revisedEta ?? ws.eta
@@ -112,7 +125,14 @@ export const useStore = create<AppStore>()(
           updatedAt: new Date().toISOString().split('T')[0],
           auditTrail: [],
         }
+        // Optimistic update
         set(state => ({ worksets: [newWorkset, ...state.worksets] }))
+        // Async DB sync (fire-and-forget)
+        fetch('/api/worksets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newWorkset),
+        }).catch(console.error)
         return newWorkset
       },
 
@@ -147,6 +167,8 @@ export const useStore = create<AppStore>()(
             : null
 
           const etaChanged = updates.eta !== undefined || updates.revisedEta !== undefined || updates.phases !== undefined
+          let finalWorksets = updatedWorksets
+
           if (successor && set1?.phases && etaChanged) {
             const effectiveSet1Phases = set1.revisedEta
               ? { ...set1.phases, etaDate: set1.revisedEta }
@@ -154,18 +176,36 @@ export const useStore = create<AppStore>()(
             const newPhases = calculateSuccessorETA(
               effectiveSet1Phases, successor.workflow, successor.locale, successor.teamSize,
             )
-            return {
-              worksets: updatedWorksets.map(w => w.id === successor.id ? {
-                ...w,
-                phases:    newPhases,
-                startDate: getSuccessorStartDate(effectiveSet1Phases.etaDate),
-                eta:       newPhases.etaDate,
-                updatedAt: today,
-              } : w),
+            finalWorksets = updatedWorksets.map(w => w.id === successor.id ? {
+              ...w,
+              phases:    newPhases,
+              startDate: getSuccessorStartDate(effectiveSet1Phases.etaDate),
+              eta:       newPhases.etaDate,
+              updatedAt: today,
+            } : w)
+
+            // Sync successor to DB too
+            const updatedSuccessor = finalWorksets.find(w => w.id === successor.id)
+            if (updatedSuccessor) {
+              fetch('/api/worksets', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updatedSuccessor),
+              }).catch(console.error)
             }
           }
 
-          return { worksets: updatedWorksets }
+          // Sync primary workset to DB
+          const updatedPrimary = finalWorksets.find(w => w.id === id)
+          if (updatedPrimary) {
+            fetch('/api/worksets', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updatedPrimary),
+            }).catch(console.error)
+          }
+
+          return { worksets: finalWorksets }
         })
       },
 
@@ -175,6 +215,7 @@ export const useStore = create<AppStore>()(
             .filter(ws => ws.id !== id)
             .map(ws => ws.predecessorId === id ? { ...ws, predecessorId: undefined } : ws),
         }))
+        fetch(`/api/worksets?id=${id}`, { method: 'DELETE' }).catch(console.error)
       },
 
       linkSuccessor: (set1Id, set2Id) => {
@@ -188,19 +229,22 @@ export const useStore = create<AppStore>()(
           set1.phases, set2.workflow, set2.locale, set2.teamSize,
         )
         const today = new Date().toISOString().split('T')[0]
+        const updatedSet2 = {
+          ...set2,
+          predecessorId: set1Id,
+          phases:        newPhases,
+          startDate:     getSuccessorStartDate(set1.phases!.etaDate),
+          eta:           newPhases.etaDate,
+          updatedAt:     today,
+        }
         set(state => ({
-          worksets: state.worksets.map(ws => {
-            if (ws.id !== set2Id) return ws
-            return {
-              ...ws,
-              predecessorId: set1Id,
-              phases:        newPhases,
-              startDate:     getSuccessorStartDate(set1.phases!.etaDate),
-              eta:           newPhases.etaDate,
-              updatedAt:     today,
-            }
-          }),
+          worksets: state.worksets.map(ws => ws.id !== set2Id ? ws : updatedSet2),
         }))
+        fetch('/api/worksets', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedSet2),
+        }).catch(console.error)
       },
 
       unlinkSuccessor: (worksetId) => {
@@ -209,12 +253,18 @@ export const useStore = create<AppStore>()(
           worksets: state.worksets.map(ws => {
             if (ws.id !== worksetId) return ws
             const { headStart: _hs, ...phasesWithoutHS } = ws.phases ?? {}
-            return {
+            const updated = {
               ...ws,
               predecessorId: undefined,
               phases: ws.phases ? { ...phasesWithoutHS } as typeof ws.phases : undefined,
               updatedAt: today,
             }
+            fetch('/api/worksets', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updated),
+            }).catch(console.error)
+            return updated
           }),
         }))
       },
@@ -300,15 +350,6 @@ export const useStore = create<AppStore>()(
         }
       },
     }),
-    {
-      name: 'workset-tracker-store-v2',
-      partialize: (state) => ({
-        worksets: state.worksets,
-        currentUser: state.currentUser,
-        isInitialized: state.isInitialized,
-      }),
-    },
-  ),
 )
 
 export { MOCK_USERS }
