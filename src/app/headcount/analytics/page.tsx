@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Users, UserCheck, UserMinus, UserX } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
+import { MultiSelect } from '@/components/ui/MultiSelect'
 import { HeadcountRecord, HeadcountAnalytics } from '@/lib/headcount-types'
 
 interface ApiResponse {
@@ -24,11 +25,11 @@ export default function HeadcountAnalyticsPage() {
   const [loading, setLoading] = useState(true)
   const [denied,  setDenied]  = useState(false)
 
-  // Filters
-  const [locale,       setLocale]       = useState('')
-  const [workflow,     setWorkflow]     = useState('')
-  const [resourceType, setResourceType] = useState('')
-  const [status,       setStatus]       = useState('')
+  // Multi-select filters
+  const [locales,       setLocales]       = useState<string[]>([])
+  const [workflows,     setWorkflows]     = useState<string[]>([])
+  const [resourceTypes, setResourceTypes] = useState<string[]>([])
+  const [statuses,      setStatuses]      = useState<string[]>([])
 
   // Role gate
   useEffect(() => {
@@ -41,29 +42,29 @@ export default function HeadcountAnalyticsPage() {
       if (role !== 'admin' && role !== 'lead') {
         setDenied(true); setLoading(false); return
       }
-      load({})
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
-  const load = useCallback(async (filters: Record<string, string>) => {
+  const load = useCallback(async () => {
     setLoading(true)
     const sp = new URLSearchParams({ analytics: '1' })
-    for (const [k, v] of Object.entries(filters)) {
-      if (v) sp.set(k, v)
-    }
+    for (const v of locales)       sp.append('locale',       v)
+    for (const v of workflows)     sp.append('workflow',     v)
+    for (const v of resourceTypes) sp.append('resourceType', v)
+    for (const v of statuses)      sp.append('status',       v)
     const res = await fetch(`/api/headcount?${sp.toString()}`)
     if (!res.ok) { setLoading(false); return }
     const json: ApiResponse = await res.json()
     setData(json)
     setLoading(false)
-  }, [])
+  }, [locales, workflows, resourceTypes, statuses])
 
-  // Re-fetch when filters change
+  // Re-fetch when filters change (unless denied)
   useEffect(() => {
     if (denied) return
-    load({ locale, workflow, resourceType, status })
-  }, [locale, workflow, resourceType, status, denied, load])
+    load()
+  }, [denied, load])
 
   if (denied) {
     return (
@@ -77,6 +78,7 @@ export default function HeadcountAnalyticsPage() {
   }
 
   const a = data?.analytics
+  const anyFilter = locales.length + workflows.length + resourceTypes.length + statuses.length > 0
 
   return (
     <AppLayout title="HC Analytics" subtitle="Breakdown by locale, workflow, resource type, and status">
@@ -102,13 +104,13 @@ export default function HeadcountAnalyticsPage() {
         {/* Filters */}
         <div className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 mr-1">Filter:</span>
-          <FilterSelect label="Locale"        value={locale}       onChange={setLocale}       options={data?.facets.locales}        />
-          <FilterSelect label="Workflow"      value={workflow}     onChange={setWorkflow}     options={data?.facets.workflows}      />
-          <FilterSelect label="Resource Type" value={resourceType} onChange={setResourceType} options={data?.facets.resourceTypes} />
-          <FilterSelect label="Status"        value={status}       onChange={setStatus}       options={data?.facets.statuses}       />
-          {(locale || workflow || resourceType || status) && (
+          <MultiSelect label="Locale"        value={locales}       onChange={setLocales}       options={data?.facets.locales       ?? []} />
+          <MultiSelect label="Workflow"      value={workflows}     onChange={setWorkflows}     options={data?.facets.workflows     ?? []} />
+          <MultiSelect label="Resource Type" value={resourceTypes} onChange={setResourceTypes} options={data?.facets.resourceTypes ?? []} />
+          <MultiSelect label="Status"        value={statuses}      onChange={setStatuses}      options={data?.facets.statuses      ?? []} />
+          {anyFilter && (
             <button
-              onClick={() => { setLocale(''); setWorkflow(''); setResourceType(''); setStatus('') }}
+              onClick={() => { setLocales([]); setWorkflows([]); setResourceTypes([]); setStatuses([]) }}
               className="text-xs text-slate-500 hover:text-slate-700 underline ml-1"
             >
               Clear all
@@ -211,26 +213,5 @@ function BreakdownCard({
         </div>
       )}
     </div>
-  )
-}
-
-// ── Filter select ────────────────────────────────────────────────────────────
-function FilterSelect({
-  label, value, onChange, options,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  options?: string[]
-}) {
-  return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-    >
-      <option value="">All {label}</option>
-      {(options ?? []).map(o => <option key={o} value={o}>{o}</option>)}
-    </select>
   )
 }

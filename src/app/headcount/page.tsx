@@ -3,8 +3,10 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { BarChart3, Search, Users } from 'lucide-react'
+import { BarChart3, Search, Users, Pencil } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
+import { MultiSelect } from '@/components/ui/MultiSelect'
+import { HeadcountEditModal } from '@/components/headcount/HeadcountEditModal'
 import { HeadcountRecord, ALL_HC_COLUMNS, normalizeStatus } from '@/lib/headcount-types'
 
 interface ApiResponse {
@@ -30,18 +32,33 @@ const RESOURCE_TYPE_COLORS: Record<string, string> = {
   Management: 'bg-purple-50 text-purple-700',
 }
 
+const ONBOARDING_COLORS: Record<string, string> = {
+  Onboarded:    'bg-green-100 text-green-700',
+  Pending:      'bg-amber-100 text-amber-700',
+  'In Progress': 'bg-blue-50 text-blue-700',
+}
+
+function onboardingClass(value: string | null | undefined): string {
+  if (!value) return 'bg-slate-100 text-slate-500'
+  return ONBOARDING_COLORS[value] ?? 'bg-slate-100 text-slate-600'
+}
+
 export default function HeadcountOverviewPage() {
   const router = useRouter()
   const [data,    setData]    = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [denied,  setDenied]  = useState(false)
+  const [role,    setRole]    = useState<string | null>(null)
 
-  // Filters
-  const [search,       setSearch]       = useState('')
-  const [locale,       setLocale]       = useState('')
-  const [workflow,     setWorkflow]     = useState('')
-  const [resourceType, setResourceType] = useState('')
-  const [status,       setStatus]       = useState('')
+  // Filters — multi-value
+  const [search,        setSearch]        = useState('')
+  const [locales,       setLocales]       = useState<string[]>([])
+  const [workflows,     setWorkflows]     = useState<string[]>([])
+  const [resourceTypes, setResourceTypes] = useState<string[]>([])
+  const [statuses,      setStatuses]      = useState<string[]>([])
+
+  // Edit modal
+  const [editing, setEditing] = useState<HeadcountRecord | null>(null)
 
   // Role gate + initial load
   useEffect(() => {
@@ -50,8 +67,9 @@ export default function HeadcountOverviewPage() {
       return r.json()
     }).then(me => {
       if (!me) return
-      const role = me?.user?.role
-      if (role !== 'admin' && role !== 'lead') {
+      const r = me?.user?.role
+      setRole(r)
+      if (r !== 'admin' && r !== 'lead') {
         setDenied(true); setLoading(false); return
       }
       load()
@@ -71,10 +89,10 @@ export default function HeadcountOverviewPage() {
     if (!data) return []
     const q = search.trim().toLowerCase()
     return data.records.filter(r => {
-      if (locale       && r.locale       !== locale)       return false
-      if (workflow     && r.workflow     !== workflow)     return false
-      if (resourceType && r.resourceType !== resourceType) return false
-      if (status       && r.status       !== status)       return false
+      if (locales.length       > 0 && !locales.includes(r.locale ?? ''))             return false
+      if (workflows.length     > 0 && !workflows.includes(r.workflow ?? ''))         return false
+      if (resourceTypes.length > 0 && !resourceTypes.includes(r.resourceType ?? '')) return false
+      if (statuses.length      > 0 && !statuses.includes(r.status ?? ''))            return false
       if (q) {
         const hay = [r.name, r.centificEmail, r.personalEmail, r.empId, r.msId, r.oneFormaId]
           .filter(Boolean).join(' ').toLowerCase()
@@ -82,7 +100,14 @@ export default function HeadcountOverviewPage() {
       }
       return true
     })
-  }, [data, search, locale, workflow, resourceType, status])
+  }, [data, search, locales, workflows, resourceTypes, statuses])
+
+  function applyEditedRecord(updated: HeadcountRecord) {
+    setData(prev => prev ? {
+      ...prev,
+      records: prev.records.map(r => r.id === updated.id ? updated : r),
+    } : prev)
+  }
 
   if (denied) {
     return (
@@ -100,6 +125,8 @@ export default function HeadcountOverviewPage() {
   const showing  = filtered.length
   const active   = filtered.filter(r => normalizeStatus(r.status) === 'Active').length
   const inactive = filtered.filter(r => normalizeStatus(r.status) === 'Inactive').length
+  const anyFilter = !!search || locales.length + workflows.length + resourceTypes.length + statuses.length > 0
+  const isAdmin = role === 'admin'
 
   return (
     <AppLayout title="HC Overview" subtitle="Headcount tracker — Tier 1">
@@ -136,13 +163,13 @@ export default function HeadcountOverviewPage() {
               className="pl-7 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
             />
           </div>
-          <FilterSelect label="Locale"        value={locale}       onChange={setLocale}       options={data?.facets.locales}        />
-          <FilterSelect label="Workflow"      value={workflow}     onChange={setWorkflow}     options={data?.facets.workflows}      />
-          <FilterSelect label="Resource Type" value={resourceType} onChange={setResourceType} options={data?.facets.resourceTypes} />
-          <FilterSelect label="Status"        value={status}       onChange={setStatus}       options={data?.facets.statuses}       />
-          {(search || locale || workflow || resourceType || status) && (
+          <MultiSelect label="Locale"        value={locales}       onChange={setLocales}       options={data?.facets.locales       ?? []} />
+          <MultiSelect label="Workflow"      value={workflows}     onChange={setWorkflows}     options={data?.facets.workflows     ?? []} />
+          <MultiSelect label="Resource Type" value={resourceTypes} onChange={setResourceTypes} options={data?.facets.resourceTypes ?? []} />
+          <MultiSelect label="Status"        value={statuses}      onChange={setStatuses}      options={data?.facets.statuses      ?? []} />
+          {anyFilter && (
             <button
-              onClick={() => { setSearch(''); setLocale(''); setWorkflow(''); setResourceType(''); setStatus('') }}
+              onClick={() => { setSearch(''); setLocales([]); setWorkflows([]); setResourceTypes([]); setStatuses([]) }}
               className="text-xs text-slate-500 hover:text-slate-700 underline ml-1"
             >
               Clear all
@@ -164,6 +191,9 @@ export default function HeadcountOverviewPage() {
               <table className="text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50 text-left">
+                    {isAdmin && (
+                      <th className="px-3 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-12"></th>
+                    )}
                     {ALL_HC_COLUMNS.map(col => (
                       <th
                         key={col.key}
@@ -179,6 +209,17 @@ export default function HeadcountOverviewPage() {
                     const norm = normalizeStatus(r.status)
                     return (
                       <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
+                        {isAdmin && (
+                          <td className="px-3 py-2 w-12">
+                            <button
+                              onClick={() => setEditing(r)}
+                              title="Edit record"
+                              className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        )}
                         {ALL_HC_COLUMNS.map(col => {
                           const v = r[col.key]
                           let display: React.ReactNode = v ?? <span className="text-slate-300">—</span>
@@ -186,6 +227,12 @@ export default function HeadcountOverviewPage() {
                           if (col.key === 'status' && v) {
                             display = (
                               <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${STATUS_COLORS[norm] ?? STATUS_COLORS.Unknown}`}>
+                                {String(v)}
+                              </span>
+                            )
+                          } else if (col.key === 'onboardingStatus' && v) {
+                            display = (
+                              <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${onboardingClass(String(v))}`}>
                                 {String(v)}
                               </span>
                             )
@@ -217,26 +264,15 @@ export default function HeadcountOverviewPage() {
         )}
 
       </div>
-    </AppLayout>
-  )
-}
 
-function FilterSelect({
-  label, value, onChange, options,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  options?: string[]
-}) {
-  return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-    >
-      <option value="">All {label}</option>
-      {(options ?? []).map(o => <option key={o} value={o}>{o}</option>)}
-    </select>
+      {/* Edit modal */}
+      {editing && isAdmin && (
+        <HeadcountEditModal
+          record={editing}
+          onClose={() => setEditing(null)}
+          onSaved={applyEditedRecord}
+        />
+      )}
+    </AppLayout>
   )
 }

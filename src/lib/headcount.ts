@@ -1,20 +1,104 @@
 import 'server-only'
-import data from './headcount-data.json'
+import { db } from './db'
+import seedData from './headcount-data.json'
 import { HeadcountRecord, HeadcountAnalytics, normalizeStatus } from './headcount-types'
 
-// JSON-loaded source of truth for the Phase-1 HC overview.
-// When migrating to Supabase, swap the import for a db query and keep the same signatures.
+// ─────────────────────────────────────────────────────────────────────────────
+// Headcount source of truth lives in Supabase (`accounts_credentials` table).
+// The table is populated by the admin via CSV upload through the Supabase
+// Table Editor. The JSON file is kept around only as a dev-time fallback if
+// Supabase is unreachable.
+// ─────────────────────────────────────────────────────────────────────────────
 
-export function getAllHeadcount(): HeadcountRecord[] {
-  return data as HeadcountRecord[]
+const SEED: HeadcountRecord[] = seedData as HeadcountRecord[]
+
+// camelCase ↔ snake_case mapping (the only place this lives)
+const COL_MAP: Array<{ js: keyof HeadcountRecord; db: string }> = [
+  { js: 'id',                db: 'id' },
+  { js: 'name',              db: 'name' },
+  { js: 'locale',            db: 'locale' },
+  { js: 'role',              db: 'role' },
+  { js: 'workflow',          db: 'workflow' },
+  { js: 'resourceType',      db: 'resource_type' },
+  { js: 'onboardingStatus',  db: 'onboarding_status' },
+  { js: 'idCheckDate',       db: 'id_check_date' },
+  { js: 'startDate',         db: 'start_date' },
+  { js: 'personalEmail',     db: 'personal_email' },
+  { js: 'centificEmail',     db: 'centific_email' },
+  { js: 'shippingAddress',   db: 'shipping_address' },
+  { js: 'phoneNumber',       db: 'phone_number' },
+  { js: 'phoneVersion',      db: 'phone_version' },
+  { js: 'laptopType',        db: 'laptop_type' },
+  { js: 'oneFormaId',        db: 'one_forma_id' },
+  { js: 'empId',             db: 'emp_id' },
+  { js: 'vMicrosoftEmail',   db: 'v_microsoft_email' },
+  { js: 'msId',              db: 'ms_id' },
+  { js: 'status',            db: 'status' },
+  { js: 'inactiveDate',      db: 'inactive_date' },
+  { js: 'remarks',           db: 'remarks' },
+]
+
+function fromDb(row: Record<string, unknown>): HeadcountRecord {
+  const rec = {} as Record<keyof HeadcountRecord, unknown>
+  for (const { js, db } of COL_MAP) {
+    rec[js] = (row[db] as string | null) ?? null
+  }
+  return rec as HeadcountRecord
 }
 
+function toDb(rec: Partial<HeadcountRecord>): Record<string, unknown> {
+  const row: Record<string, unknown> = {}
+  for (const { js, db } of COL_MAP) {
+    if (js in rec) row[db] = rec[js] ?? null
+  }
+  return row
+}
+
+// ─── Public API ─────────────────────────────────────────────────────────────
+
+export async function getAllHeadcount(): Promise<HeadcountRecord[]> {
+  const { data, error } = await db.from('accounts_credentials').select('*').order('name')
+  if (error || !data) {
+    // Supabase unavailable or table missing — fall back to JSON so the page
+    // still renders something useful in dev / first-deploy scenarios.
+    return SEED
+  }
+  return data.map(fromDb)
+}
+
+export async function updateHeadcount(
+  id: string,
+  patch: Partial<Omit<HeadcountRecord, 'id'>>,
+  updatedBy: string,
+): Promise<HeadcountRecord | null> {
+  const row = toDb(patch)
+  row['updated_at'] = new Date().toISOString()
+  row['updated_by'] = updatedBy
+
+  const { data, error } = await db
+    .from('accounts_credentials')
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error || !data) return null
+  return fromDb(data)
+}
+
+// ─── Filtering / analytics ──────────────────────────────────────────────────
+
 export interface HeadcountFilters {
-  locale?: string
-  workflow?: string
-  resourceType?: string
-  status?: string
+  locale?: string[]
+  workflow?: string[]
+  resourceType?: string[]
+  status?: string[]
   search?: string
+}
+
+function matchesMulti(value: string | null, allowed?: string[]): boolean {
+  if (!allowed || allowed.length === 0) return true
+  return value !== null && allowed.includes(value)
 }
 
 export function filterHeadcount(
@@ -22,16 +106,14 @@ export function filterHeadcount(
   f: HeadcountFilters,
 ): HeadcountRecord[] {
   return records.filter(r => {
-    if (f.locale       && r.locale       !== f.locale)       return false
-    if (f.workflow     && r.workflow     !== f.workflow)     return false
-    if (f.resourceType && r.resourceType !== f.resourceType) return false
-    if (f.status       && r.status       !== f.status)       return false
+    if (!matchesMulti(r.locale,       f.locale))       return false
+    if (!matchesMulti(r.workflow,     f.workflow))     return false
+    if (!matchesMulti(r.resourceType, f.resourceType)) return false
+    if (!matchesMulti(r.status,       f.status))       return false
     if (f.search) {
       const q = f.search.toLowerCase()
       const hay = [r.name, r.centificEmail, r.personalEmail, r.empId, r.msId, r.oneFormaId]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
+        .filter(Boolean).join(' ').toLowerCase()
       if (!hay.includes(q)) return false
     }
     return true
