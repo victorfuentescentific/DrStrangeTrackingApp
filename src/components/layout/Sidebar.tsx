@@ -5,11 +5,19 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ListChecks, Kanban, BarChart3, Bot,
   Settings, ChevronRight, CalendarDays, Calculator, Clock,
-  CalendarCheck, Users, Plane, ShieldCheck,
+  CalendarCheck, Users, Plane, ShieldCheck, UserCog,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useSession } from '@/hooks/useSession'
 
-const NAV_SECTIONS = [
+type NavItem = {
+  href: string
+  label: string
+  icon: typeof LayoutDashboard
+  roles?: ('admin' | 'lead' | 'fte' | 'freelancer')[]
+}
+
+const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Planning',
     items: [
@@ -18,6 +26,7 @@ const NAV_SECTIONS = [
       { href: '/calendar',     label: 'Calendar',        icon: CalendarDays },
       { href: '/projections',  label: 'Projections',     icon: Calculator },
       { href: '/planner',      label: 'Planner',         icon: Kanban },
+      { href: '/headcount',    label: 'HC Overview',     icon: UserCog,        roles: ['admin', 'lead'] },
     ],
   },
   {
@@ -47,6 +56,14 @@ const NAV_SECTIONS = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const { user } = useSession()
+  const role = user?.role
+
+  // Filter nav sections by role; items without `roles` are visible to everyone.
+  const visibleSections = NAV_SECTIONS.map(section => ({
+    ...section,
+    items: section.items.filter(item => !item.roles || (role && item.roles.includes(role))),
+  })).filter(section => section.items.length > 0)
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 w-60 bg-slate-900 flex flex-col">
@@ -65,7 +82,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
-        {NAV_SECTIONS.map(section => (
+        {visibleSections.map(section => (
           <div key={section.label}>
             <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
               {section.label}
