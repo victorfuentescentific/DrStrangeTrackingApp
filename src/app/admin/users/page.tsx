@@ -70,13 +70,14 @@ const inputCls =
 type Tab = 'identity' | 'employment' | 'onboarding' | 'contact'
 
 interface EditModalProps {
-  user:    AdminUser
-  locales: string[]
-  onSaved: (updated: AdminUser) => void
-  onClose: () => void
+  user:      AdminUser
+  locales:   string[]
+  onSaved:   (updated: AdminUser) => void
+  onDeleted: (id: string) => void
+  onClose:   () => void
 }
 
-function EditUserModal({ user, locales, onSaved, onClose }: EditModalProps) {
+function EditUserModal({ user, locales, onSaved, onDeleted, onClose }: EditModalProps) {
   const [tab, setTab] = useState<Tab>('identity')
 
   // Tab 1: Identity
@@ -115,8 +116,10 @@ function EditUserModal({ user, locales, onSaved, onClose }: EditModalProps) {
   const [shippingAddress,  setShippingAddress] = useState(user.shipping_address ?? '')
   const [remarks,          setRemarks]        = useState(user.remarks ?? '')
 
-  const [saving, setSaving] = useState(false)
-  const [error,  setError]  = useState<string | null>(null)
+  const [saving,         setSaving]         = useState(false)
+  const [error,          setError]          = useState<string | null>(null)
+  const [confirmDelete,  setConfirmDelete]  = useState(false)
+  const [deleting,       setDeleting]       = useState(false)
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
@@ -433,22 +436,66 @@ function EditUserModal({ user, locales, onSaved, onClose }: EditModalProps) {
           {/* Footer — always visible */}
           <div className="flex-shrink-0 px-6 pb-5 pt-3 border-t border-gray-100">
             {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mb-3">{error}</p>}
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                {saving ? 'Saving…' : 'Save changes'}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
+
+            {confirmDelete ? (
+              <div className="space-y-3">
+                <p className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2 border border-red-100">
+                  This will permanently delete <span className="font-semibold">{user.name}</span>. This cannot be undone.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={async () => {
+                      setDeleting(true)
+                      const res = await fetch(`/api/admin/users?id=${user.id}`, { method: 'DELETE' })
+                      if (!res.ok) {
+                        const d = await res.json()
+                        setError(d.error ?? 'Delete failed')
+                        setDeleting(false)
+                        setConfirmDelete(false)
+                        return
+                      }
+                      onDeleted(user.id)
+                    }}
+                    className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  >
+                    {deleting ? 'Deleting…' : 'Yes, delete permanently'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {saving ? 'Saving…' : 'Save changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="px-3 py-2 rounded-lg border border-red-200 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            )}
           </div>
         </form>
       </div>
@@ -526,6 +573,11 @@ export default function AdminUsersPage() {
 
   function handleSaved(updated: AdminUser) {
     setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
+    setEditing(null)
+  }
+
+  function handleDeleted(id: string) {
+    setUsers(prev => prev.filter(u => u.id !== id))
     setEditing(null)
   }
 
@@ -657,6 +709,7 @@ export default function AdminUsersPage() {
           user={editing}
           locales={locales}
           onSaved={handleSaved}
+          onDeleted={handleDeleted}
           onClose={() => setEditing(null)}
         />
       )}
