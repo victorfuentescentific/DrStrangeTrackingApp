@@ -25,7 +25,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/availability', label: 'My Availability', icon: CalendarCheck },
       { href: '/work-abroad',  label: 'Work Abroad',     icon: Plane },
-      { href: '/overview',     label: 'Overview',        icon: Users },
+      { href: '/overview',     label: 'Team Time Off',   icon: Users },
     ],
   },
   {
@@ -57,8 +57,8 @@ export function Sidebar() {
             <Kanban className="w-4 h-4 text-white" />
           </div>
           <div>
-            <div className="text-sm font-bold text-white">WorksetPM</div>
-            <div className="text-[10px] text-slate-400">ETA Tracker</div>
+            <div className="text-sm font-bold text-white">Dr. Strange Portal</div>
+            <div className="text-[10px] text-slate-400">EU LLM Data — PM Suite</div>
           </div>
         </div>
       </div>

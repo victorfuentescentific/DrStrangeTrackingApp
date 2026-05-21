@@ -1,11 +1,11 @@
-# WorksetPM — ETA Tracker MVP
+# Dr. Strange Portal
 
-PM Workset tracking, risk management, and Claude-assisted automation.
+EU LLM Data team portal for workset tracking, time-off management, hour submissions, and Claude-assisted automation.
 
 ## Quick Start
 
 ```bash
-cd workset-tracker
+cd DrStrangeTrackingApp
 npm install
 npm run dev
 ```

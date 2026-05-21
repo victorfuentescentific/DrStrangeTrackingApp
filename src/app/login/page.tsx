@@ -39,7 +39,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm p-8 bg-white rounded-xl shadow-md">
-        <h1 className="text-2xl font-bold mb-6 text-center text-gray-800">Workset Tracker</h1>
+        <h1 className="text-2xl font-bold mb-6 text-center text-gray-800">Dr. Strange Portal</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="email">
