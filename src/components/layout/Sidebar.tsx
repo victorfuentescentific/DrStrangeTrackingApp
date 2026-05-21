@@ -48,9 +48,9 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Admin',
     items: [
-      { href: '/admin/submissions', label: 'Submissions', icon: ShieldCheck },
-      { href: '/admin/users',       label: 'Users',       icon: Users },
-      { href: '/notes',             label: 'Notes & Links', icon: NotebookPen },
+      { href: '/admin/submissions', label: 'Hours Submissions', icon: ShieldCheck, roles: ['admin'] },
+      { href: '/admin/users',       label: 'Users',             icon: Users,       roles: ['admin'] },
+      { href: '/notes',             label: 'Notes & Links',     icon: NotebookPen, roles: ['admin'] },
     ],
   },
 ]

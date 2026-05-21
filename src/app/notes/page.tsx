@@ -41,13 +41,18 @@ export default function NotesPage() {
   const [newLabel, setNewLabel] = useState('')
   const [newUrl,   setNewUrl]   = useState('')
 
-  // Auth gate — only require a login, no role restriction
+  // Auth gate — admin only (matches the Admin sidebar section).
   useEffect(() => {
     fetch('/api/auth/me').then(r => {
       if (r.status === 401) { router.push('/login'); return null }
       return r.json()
     }).then(me => {
-      if (me) setAuthed(true)
+      if (!me) return
+      if (me?.user?.role !== 'admin') {
+        router.push('/')
+        return
+      }
+      setAuthed(true)
     })
   }, [router])
 
