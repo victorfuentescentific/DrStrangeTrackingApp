@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Check, Loader2 } from 'lucide-react'
+import { X, Check, Loader2, AlertTriangle } from 'lucide-react'
 import { HeadcountRecord } from '@/lib/headcount-types'
 
 interface HeadcountEditModalProps {
@@ -102,20 +102,32 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
       setSaving(false); onClose(); return
     }
 
-    const res = await fetch('/api/headcount', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: record.id, patch }),
-    })
-    setSaving(false)
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      setError(data.error ?? `Save failed (HTTP ${res.status})`)
-      return
+    try {
+      const res = await fetch('/api/headcount', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: record.id, patch }),
+      })
+      setSaving(false)
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const msg = data.error ?? `Save failed — HTTP ${res.status}`
+        console.error('[HeadcountEditModal] save failed:', { status: res.status, body: data })
+        setError(msg)
+        return
+      }
+
+      const data = await res.json()
+      console.log('[HeadcountEditModal] save ok:', data.record?.id)
+      onSaved(data.record)
+      onClose()
+    } catch (err) {
+      setSaving(false)
+      const msg = err instanceof Error ? err.message : 'Network error — could not reach the server.'
+      console.error('[HeadcountEditModal] network error:', err)
+      setError(msg)
     }
-    const data = await res.json()
-    onSaved(data.record)
-    onClose()
   }
 
   return (
@@ -136,6 +148,18 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
 
         {/* Body */}
         <div className="overflow-y-auto px-6 py-5 space-y-6 flex-1">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-800">Save failed</p>
+                <p className="text-xs text-red-700 mt-0.5 font-mono break-all">{error}</p>
+                <p className="text-[11px] text-red-600 mt-1">
+                  Open browser DevTools → Console for full details.
+                </p>
+              </div>
+            </div>
+          )}
           {GROUPS.map(group => (
             <section key={group.label}>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
@@ -195,9 +219,9 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50 rounded-b-2xl">
-          {error
-            ? <p className="text-sm text-red-600">{error}</p>
-            : <p className="text-xs text-slate-400">Changes are persisted to the headcount table.</p>}
+          <p className="text-xs text-slate-400">
+            Saves to <code className="px-1 py-0.5 rounded bg-slate-200 text-slate-600 text-[11px]">accounts_credentials</code> in Supabase.
+          </p>
           <div className="flex items-center gap-2 ml-auto">
             <button
               onClick={onClose}

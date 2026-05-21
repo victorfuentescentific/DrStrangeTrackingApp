@@ -66,11 +66,17 @@ export async function getAllHeadcount(): Promise<HeadcountRecord[]> {
   return data.map(fromDb)
 }
 
+export interface UpdateResult {
+  ok: boolean
+  record?: HeadcountRecord
+  error?: string
+}
+
 export async function updateHeadcount(
   id: string,
   patch: Partial<Omit<HeadcountRecord, 'id'>>,
   updatedBy: string,
-): Promise<HeadcountRecord | null> {
+): Promise<UpdateResult> {
   const row = toDb(patch)
   row['updated_at'] = new Date().toISOString()
   row['updated_by'] = updatedBy
@@ -82,8 +88,14 @@ export async function updateHeadcount(
     .select()
     .single()
 
-  if (error || !data) return null
-  return fromDb(data)
+  if (error) {
+    console.error('updateHeadcount Supabase error:', { message: error.message, details: error.details, hint: error.hint, code: error.code })
+    return { ok: false, error: `Supabase: ${error.message}${error.hint ? ' — ' + error.hint : ''}` }
+  }
+  if (!data) {
+    return { ok: false, error: `No record with id "${id}" found in accounts_credentials.` }
+  }
+  return { ok: true, record: fromDb(data) }
 }
 
 // ─── Filtering / analytics ──────────────────────────────────────────────────

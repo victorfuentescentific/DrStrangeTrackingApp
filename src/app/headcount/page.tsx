@@ -7,6 +7,7 @@ import { BarChart3, Search, Users, Pencil } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { MultiSelect } from '@/components/ui/MultiSelect'
 import { HeadcountEditModal } from '@/components/headcount/HeadcountEditModal'
+import { HeadcountSummaryCards } from '@/components/headcount/HeadcountSummaryCards'
 import { HeadcountRecord, ALL_HC_COLUMNS, normalizeStatus } from '@/lib/headcount-types'
 
 interface ApiResponse {
@@ -142,14 +143,20 @@ export default function HeadcountOverviewPage() {
               <span className="w-2 h-2 rounded-full bg-amber-500 ml-2" /> {inactive} inactive
             </span>
           </div>
+          {anyFilter && (
+            <span className="text-[11px] text-slate-400 italic">(filtered)</span>
+          )}
           <Link
             href="/headcount/analytics"
             className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
           >
             <BarChart3 className="w-4 h-4" />
-            View Analytics
+            Detailed Analytics
           </Link>
         </div>
+
+        {/* Summary dashboard — respects active filters */}
+        <HeadcountSummaryCards records={filtered} />
 
         {/* Filters */}
         <div className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-2">

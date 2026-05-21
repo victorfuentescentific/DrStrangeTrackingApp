@@ -84,9 +84,13 @@ export async function PATCH(req: NextRequest) {
   // Disallow id mutation explicitly
   if ('id' in body.patch) delete (body.patch as Record<string, unknown>).id
 
-  const updated = await updateHeadcount(body.id, body.patch, session.email)
-  if (!updated) {
-    return NextResponse.json({ error: 'Record not found or update failed' }, { status: 404 })
+  const result = await updateHeadcount(body.id, body.patch, session.email)
+  if (!result.ok) {
+    const isNotFound = result.error?.includes('No record with id')
+    return NextResponse.json(
+      { error: result.error ?? 'Update failed' },
+      { status: isNotFound ? 404 : 500 },
+    )
   }
-  return NextResponse.json({ ok: true, record: updated })
+  return NextResponse.json({ ok: true, record: result.record })
 }
