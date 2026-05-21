@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'WorksetPM — ETA Tracker',
-  description: 'PM Workset ETA tracking, risk management, and Claude-assisted automation',
+  title: 'Dr. Strange Portal',
+  description: 'EU LLM Data team — workset tracking, time-off, and Claude-assisted automation',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

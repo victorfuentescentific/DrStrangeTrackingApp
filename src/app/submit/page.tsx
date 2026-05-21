@@ -218,9 +218,9 @@ export default function SubmitPage() {
       <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-md bg-brand-500 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">W</span>
+            <span className="text-white text-xs font-bold">DS</span>
           </div>
-          <span className="font-semibold text-slate-800 text-sm">WorksetPM</span>
+          <span className="font-semibold text-slate-800 text-sm">Dr. Strange Portal</span>
         </div>
         <div className="flex items-center gap-3">
           {user && (

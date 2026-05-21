@@ -483,7 +483,7 @@ export default function OverviewPage() {
   if (!me) return null
 
   return (
-    <AppLayout title="Overview" subtitle="Team availability">
+    <AppLayout title="Team Time Off Dashboard" subtitle="Who's in, who's out — weekly view">
       <div className="px-4 py-8 space-y-5">
 
         {/* Controls */}
