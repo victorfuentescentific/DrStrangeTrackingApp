@@ -301,6 +301,10 @@ async function main() {
 
     if (existingUser) {
       parsedRows.push({ rowNumber, data: updateFields, isNew: false, existingId: existingUser.id })
+    } else if (!centificEmail) {
+      // No email and no DB match — can't create a user without email; skip
+      console.warn(`⚠️  Row ${rowNumber} (${rawName}): no email + no DB match — skipped (update manually via Admin → Users)`)
+      skipped++
     } else {
       const insertPayload: Record<string, unknown> = {
         id:            randomUUID(),
