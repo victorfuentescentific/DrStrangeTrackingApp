@@ -429,21 +429,30 @@ function CellModal({ userId, userName, date, existing, user, onSaved, onClose }:
 
 // ── Stats panel ───────────────────────────────────────────────────────────────
 
-interface DayStat {
-  date:           string
-  totalUsers:     number
-  availableUsers: number
-  totalHours:     number
-  missingCount:   number
+type StatsRange = 'week' | 'week-2' | 'week-4'
+
+const RANGE_LABELS: Record<StatsRange, string> = {
+  'week':   'This week',
+  'week-2': 'Last 2 weeks',
+  'week-4': 'Last 4 weeks',
 }
 
-interface LocaleStats {
-  locale:                  string
-  label:                   string
-  days:                    DayStat[]
-  weekTotalHours:          number
-  weekAvailablePersonDays: number
-  weekTotalPersonDays:     number
+function getRangeDates(range: StatsRange): string[] {
+  const today = new Date()
+  const mon   = new Date(today)
+  mon.setDate(today.getDate() - ((today.getDay() + 6) % 7))
+  mon.setHours(12, 0, 0, 0)
+  const weeks = range === 'week' ? 1 : range === 'week-2' ? 2 : 4
+  const start = new Date(mon)
+  start.setDate(mon.getDate() - (weeks - 1) * 7)
+  const days: string[] = []
+  for (let w = 0; w < weeks; w++)
+    for (let d = 0; d < 5; d++) {
+      const dt = new Date(start)
+      dt.setDate(start.getDate() + w * 7 + d)
+      days.push(dt.toISOString().slice(0, 10))
+    }
+  return days
 }
 
 function coverageColor(rate: number) {
@@ -452,128 +461,287 @@ function coverageColor(rate: number) {
   return 'bg-red-50 border-red-200 text-red-600'
 }
 
-function coverageDot(rate: number) {
-  if (rate >= 0.8) return 'bg-emerald-400'
-  if (rate >= 0.5) return 'bg-amber-400'
-  return 'bg-red-400'
+interface HeatCell { date: string; total: number; avail: number; hours: number; missing: number }
+interface HeatRow  { locale: string; label: string; cells: HeatCell[]; totH: number; totA: number; totU: number; isAll?: boolean }
+
+function buildHeatRows(
+  users:       UserSummary[],
+  subs:        AvailabilitySubmission[],
+  dates:       string[],
+  locFilter:   string,
+  wfFilter:    string,
+): HeatRow[] {
+  const subMap: Record<string, Record<string, AvailabilitySubmission>> = {}
+  for (const s of subs) {
+    if (!subMap[s.userId]) subMap[s.userId] = {}
+    subMap[s.userId][s.date] = s
+  }
+  const grouped: Record<string, UserSummary[]> = {}
+  for (const u of users) {
+    if (!u.locale)                                          continue
+    if (locFilter && u.locale !== locFilter)               continue
+    if (wfFilter  && (u.workflow ?? '').toLowerCase() !== wfFilter.toLowerCase()) continue
+    if (!grouped[u.locale]) grouped[u.locale] = []
+    grouped[u.locale].push(u)
+  }
+  return Object.keys(grouped).sort().map(locale => {
+    const us = grouped[locale]
+    const cells: HeatCell[] = dates.map(date => {
+      let avail = 0, hours = 0, missing = 0
+      for (const u of us) {
+        const s = subMap[u.id]?.[date]
+        if (!s) { missing++ }
+        else if (s.status === 'AVAILABLE' || s.status === 'WA') { avail++; hours += s.availabilityHours ?? 0 }
+      }
+      return { date, total: us.length, avail, hours, missing }
+    })
+    return {
+      locale, label: locale.replace('_', '-'), cells,
+      totH: cells.reduce((s, c) => s + c.hours, 0),
+      totA: cells.reduce((s, c) => s + c.avail, 0),
+      totU: cells.reduce((s, c) => s + c.total, 0),
+    }
+  })
 }
 
 interface StatsPanelProps {
-  localeStats:  LocaleStats[]
-  dates:        string[]
-  open:         boolean
-  onToggle:     () => void
-  activeLocale: string
-  onSetLocale:  (l: string) => void
+  users:           UserSummary[]
+  workflows:       string[]
+  filterLocale:    string
+  onFilterLocale:  (l: string) => void
+  filterWorkflow:  string
+  onFilterWorkflow:(w: string) => void
+  open:            boolean
+  onToggle:        () => void
 }
 
-function StatsPanel({ localeStats, dates, open, onToggle, activeLocale, onSetLocale }: StatsPanelProps) {
-  const emptyDays: DayStat[] = dates.map(d => ({
-    date: d, totalUsers: 0, availableUsers: 0, totalHours: 0, missingCount: 0,
+function StatsPanel({ users, workflows, filterLocale, onFilterLocale, filterWorkflow, onFilterWorkflow, open, onToggle }: StatsPanelProps) {
+  const [range,   setRange]   = useState<StatsRange>('week')
+  const [dates,   setDates]   = useState<string[]>(() => getRangeDates('week'))
+  const [subs,    setSubs]    = useState<AvailabilitySubmission[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const ds = getRangeDates(range)
+    setDates(ds)
+    setLoading(true)
+    const p = new URLSearchParams({ from: ds[0], to: ds[ds.length - 1] })
+    fetch(`/api/availability?${p}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { setSubs(Array.isArray(d) ? d : []); setLoading(false) })
+  }, [range])
+
+  const rows = useMemo(
+    () => buildHeatRows(users, subs, dates, filterLocale, filterWorkflow),
+    [users, subs, dates, filterLocale, filterWorkflow],
+  )
+
+  const allCells: HeatCell[] = dates.map((date, i) => ({
+    date,
+    total:   rows.reduce((s, r) => s + r.cells[i].total, 0),
+    avail:   rows.reduce((s, r) => s + r.cells[i].avail, 0),
+    hours:   rows.reduce((s, r) => s + r.cells[i].hours, 0),
+    missing: rows.reduce((s, r) => s + r.cells[i].missing, 0),
   }))
+  const totH     = allCells.reduce((s, c) => s + c.hours, 0)
+  const totA     = allCells.reduce((s, c) => s + c.avail, 0)
+  const totU     = allCells.reduce((s, c) => s + c.total, 0)
+  const weekRate = totU > 0 ? totA / totU : 1
 
-  const allStats: LocaleStats = localeStats.reduce((acc, ls) => ({
-    locale:                  '__all__',
-    label:                   'All',
-    weekTotalHours:          acc.weekTotalHours + ls.weekTotalHours,
-    weekAvailablePersonDays: acc.weekAvailablePersonDays + ls.weekAvailablePersonDays,
-    weekTotalPersonDays:     acc.weekTotalPersonDays + ls.weekTotalPersonDays,
-    days: acc.days.map((d, i) => ({
-      date:           d.date,
-      totalUsers:     d.totalUsers     + ls.days[i].totalUsers,
-      availableUsers: d.availableUsers + ls.days[i].availableUsers,
-      totalHours:     d.totalHours     + ls.days[i].totalHours,
-      missingCount:   d.missingCount   + ls.days[i].missingCount,
-    })),
-  }), { locale: '__all__', label: 'All', weekTotalHours: 0, weekAvailablePersonDays: 0, weekTotalPersonDays: 0, days: emptyDays })
+  const displayRows: HeatRow[] = filterLocale
+    ? rows
+    : [{ locale: '__all__', label: 'All', cells: allCells, totH, totA, totU, isAll: true }, ...rows]
 
-  const active = activeLocale === '__all__'
-    ? allStats
-    : (localeStats.find(ls => ls.locale === activeLocale) ?? allStats)
+  // Group dates into week chunks for column headers
+  const weekChunks: string[][] = []
+  for (let i = 0; i < dates.length; i += 5) weekChunks.push(dates.slice(i, i + 5))
 
-  const weekRate = active.weekTotalPersonDays > 0
-    ? active.weekAvailablePersonDays / active.weekTotalPersonDays
-    : 1
+  const allLocales = [...new Set(users.map(u => u.locale).filter(Boolean) as string[])].sort()
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
-      >
+      {/* Collapsible header */}
+      <button onClick={onToggle} className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Team Coverage</span>
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${coverageColor(weekRate)}`}>
-            {Math.round(weekRate * 100)}% this week
+            {Math.round(weekRate * 100)}% · {totH}h · {RANGE_LABELS[range].toLowerCase()}
           </span>
         </div>
         <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="px-5 pb-5 border-t border-gray-50">
-          {/* Locale tabs */}
-          <div className="flex gap-1.5 pt-3 pb-4 flex-wrap">
-            <button
-              onClick={() => onSetLocale('__all__')}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                activeLocale === '__all__'
-                  ? 'bg-slate-800 text-white border-slate-800'
-                  : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              }`}
-            >
-              All locales
-            </button>
-            {localeStats.map(ls => (
-              <button
-                key={ls.locale}
-                onClick={() => onSetLocale(ls.locale)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                  activeLocale === ls.locale
-                    ? 'bg-slate-800 text-white border-slate-800'
-                    : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                }`}
-              >
-                {ls.label}
-              </button>
-            ))}
-          </div>
+        <div className="border-t border-gray-50">
+          {/* Controls */}
+          <div className="flex items-start gap-3 px-5 py-3 border-b border-gray-50 flex-wrap">
 
-          {/* Day cards */}
-          <div className="grid grid-cols-5 gap-2">
-            {active.days.map(day => {
-              const rate = day.totalUsers > 0 ? day.availableUsers / day.totalUsers : 1
-              return (
-                <div key={day.date} className={`rounded-xl border px-3 py-3 ${coverageColor(rate)}`}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide opacity-60 mb-1.5">
-                    {new Date(day.date + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}
-                  </p>
-                  <p className="text-2xl font-bold leading-none">{day.totalHours}h</p>
-                  <p className="text-[11px] mt-1.5 opacity-80">
-                    {day.availableUsers}/{day.totalUsers} available
-                  </p>
-                  {day.missingCount > 0 && (
-                    <p className="text-[10px] mt-0.5 opacity-50">{day.missingCount} not submitted</p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Week summary */}
-          <div className="mt-3 flex items-center gap-3 px-1 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${coverageDot(weekRate)}`} />
-              <span className="text-sm font-semibold text-gray-800">{active.weekTotalHours}h</span>
-              <span className="text-xs text-gray-400">week total</span>
+            {/* Range */}
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Range</p>
+              <div className="flex gap-1">
+                {(['week', 'week-2', 'week-4'] as StatsRange[]).map(r => (
+                  <button key={r} onClick={() => setRange(r)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      range === r ? 'bg-slate-800 text-white border-slate-800'
+                                  : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    }`}
+                  >
+                    {RANGE_LABELS[r]}
+                  </button>
+                ))}
+              </div>
             </div>
-            <span className="text-xs text-gray-300">·</span>
-            <span className="text-xs text-gray-500">
-              {active.weekAvailablePersonDays}/{active.weekTotalPersonDays} person-days
-            </span>
-            <span className="text-xs text-gray-300">·</span>
-            <span className="text-xs text-gray-500">{Math.round(weekRate * 100)}% attendance rate</span>
+
+            <div className="w-px self-stretch bg-gray-100 hidden sm:block" />
+
+            {/* Locale */}
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Locale / team</p>
+              <div className="flex gap-1 flex-wrap">
+                <button onClick={() => onFilterLocale('')}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                    !filterLocale ? 'bg-blue-600 text-white border-blue-600'
+                                  : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                  }`}
+                >
+                  All
+                </button>
+                {allLocales.map(l => (
+                  <button key={l} onClick={() => onFilterLocale(filterLocale === l ? '' : l)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      filterLocale === l ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    }`}
+                  >
+                    {l.replace('_', '-')}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {workflows.length > 0 && (
+              <>
+                <div className="w-px self-stretch bg-gray-100 hidden sm:block" />
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Workflow</p>
+                  <div className="flex gap-1 flex-wrap">
+                    <button onClick={() => onFilterWorkflow('')}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        !filterWorkflow ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                      }`}
+                    >
+                      All
+                    </button>
+                    {workflows.map(w => (
+                      <button key={w} onClick={() => onFilterWorkflow(filterWorkflow === w ? '' : w)}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          filterWorkflow === w ? 'bg-blue-600 text-white border-blue-600'
+                                              : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                        }`}
+                      >
+                        {w.charAt(0).toUpperCase() + w.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
+
+          {/* Heatmap */}
+          {loading ? (
+            <div className="px-5 py-8 text-center text-xs text-gray-400">Loading coverage data…</div>
+          ) : (
+            <div className="px-5 py-4 overflow-x-auto">
+              <table className="text-xs border-separate border-spacing-y-1" style={{ minWidth: 'max-content' }}>
+                <thead>
+                  {/* Week group row — only for multi-week ranges */}
+                  {weekChunks.length > 1 && (
+                    <tr>
+                      <th className="pr-4 pb-0.5" />
+                      {weekChunks.map((chunk, wi) => (
+                        <th key={wi} colSpan={5} className="text-center pb-0.5 font-normal">
+                          <span className="text-[10px] text-gray-300">
+                            w/c {new Date(chunk[0] + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </span>
+                        </th>
+                      ))}
+                      <th className="pl-2 pb-0.5" />
+                    </tr>
+                  )}
+                  {/* Day headers */}
+                  <tr>
+                    <th className="pr-4 pb-1 text-left font-medium text-gray-400 text-[10px] uppercase tracking-wide">Team</th>
+                    {dates.map((d, di) => (
+                      <th key={d} className={`text-center pb-1 w-[46px] ${di > 0 && di % 5 === 0 ? 'pl-2' : ''}`}>
+                        <p className="text-[10px] font-semibold text-gray-500">
+                          {new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short' })}
+                        </p>
+                        <p className="text-[9px] text-gray-300 font-normal leading-none">
+                          {new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric' })}
+                        </p>
+                      </th>
+                    ))}
+                    <th className="pl-2 pb-1 text-center font-medium text-gray-400 text-[10px] uppercase tracking-wide w-16">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayRows.map((row, ri) => {
+                    const rowRate = row.totU > 0 ? row.totA / row.totU : 1
+                    return (
+                      <tr key={row.locale} className={ri === 0 && !filterLocale ? '' : ''}>
+                        <td className={`pr-4 py-0.5 ${ri === 1 && !filterLocale ? 'pt-2' : ''}`}>
+                          <span className={`text-[11px] font-semibold whitespace-nowrap ${
+                            row.isAll ? 'text-gray-400' : 'text-gray-700'
+                          }`}>
+                            {row.label}
+                          </span>
+                        </td>
+                        {row.cells.map((cell, ci) => {
+                          const rate = cell.total > 0 ? cell.avail / cell.total : 1
+                          return (
+                            <td key={cell.date} className={`py-0.5 ${ci > 0 && ci % 5 === 0 ? 'pl-2' : ''} ${ri === 1 && !filterLocale ? 'pt-2' : ''}`}>
+                              <div
+                                title={`${cell.avail}/${cell.total} available · ${cell.hours}h${cell.missing ? ` · ${cell.missing} not submitted` : ''}`}
+                                className={`rounded-lg border text-center cursor-default w-[42px] py-1.5 ${coverageColor(rate)} ${
+                                  row.isAll ? 'opacity-60' : ''
+                                }`}
+                              >
+                                <p className="text-[11px] font-bold leading-none">{cell.hours}h</p>
+                                <p className="text-[9px] opacity-70 mt-0.5 leading-none">{cell.avail}/{cell.total}</p>
+                              </div>
+                            </td>
+                          )
+                        })}
+                        <td className={`pl-2 py-0.5 ${ri === 1 && !filterLocale ? 'pt-2' : ''}`}>
+                          <div className={`rounded-lg border text-center w-14 py-1.5 ${coverageColor(rowRate)} ${row.isAll ? 'opacity-60' : ''}`}>
+                            <p className="text-[11px] font-bold leading-none">{row.totH}h</p>
+                            <p className="text-[9px] opacity-70 mt-0.5 leading-none">{Math.round(rowRate * 100)}%</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+
+              {/* Legend */}
+              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-50">
+                {([
+                  { label: '≥ 80% available', rate: 0.9 },
+                  { label: '50–79%',           rate: 0.65 },
+                  { label: '< 50%',            rate: 0.3  },
+                ] as const).map(({ label, rate }) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <div className={`w-3.5 h-3.5 rounded border ${coverageColor(rate)}`} />
+                    <span className="text-[10px] text-gray-400">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -596,9 +764,10 @@ export default function OverviewPage() {
   const [batchOpen,   setBatchOpen]   = useState(false)
   const [cellEdit,    setCellEdit]    = useState<{ userId: string; date: string } | null>(null)
 
-  // Stats panel
-  const [statsOpen,   setStatsOpen]   = useState(true)
-  const [statsLocale, setStatsLocale] = useState('__all__')
+  // Stats panel + grid filters
+  const [statsOpen,      setStatsOpen]      = useState(true)
+  const [filterLocale,   setFilterLocale]   = useState('')
+  const [filterWorkflow, setFilterWorkflow] = useState('')
 
   const isAdmin = me?.role === 'admin'
 
@@ -635,9 +804,11 @@ export default function OverviewPage() {
 
   const userById = Object.fromEntries(users.map(u => [u.id, u]))
 
-  // ── Role-based visibility ─────────────────────────────────────────────────
+  // ── Role-based visibility (+ active filters) ─────────────────────────────
   function isVisible(u: UserSummary): boolean {
     if (!me) return false
+    if (filterLocale   && u.locale   !== filterLocale)                            return false
+    if (filterWorkflow && (u.workflow ?? '').toLowerCase() !== filterWorkflow.toLowerCase()) return false
     if (me.role === 'admin') return true
     if (u.locale !== me.locale) return false
     if (me.role === 'lead')       return true
@@ -687,38 +858,11 @@ export default function OverviewPage() {
   const groupKeys = Object.keys(groupMap).filter(k => k !== '__management__').sort()
   if (groupMap['__management__']) groupKeys.push('__management__')
 
-  // ── Compute stats for the panel (pure derivation from groupMap) ───────────
-  const localeStats = useMemo<LocaleStats[]>(() => {
-    return groupKeys
-      .filter(k => k !== '__management__')
-      .map(locale => {
-        const rows = groupMap[locale] ?? []
-        const days: DayStat[] = dates.map(date => {
-          let availableUsers = 0
-          let totalHours     = 0
-          let missingCount   = 0
-          for (const row of rows) {
-            const sub = row.submissions[date]
-            if (!sub) {
-              missingCount++
-            } else if (sub.status === 'AVAILABLE' || sub.status === 'WA') {
-              availableUsers++
-              totalHours += sub.availabilityHours ?? 0
-            }
-          }
-          return { date, totalUsers: rows.length, availableUsers, totalHours, missingCount }
-        })
-        return {
-          locale,
-          label:                   locale.replace('_', '-'),
-          days,
-          weekTotalHours:          days.reduce((s, d) => s + d.totalHours, 0),
-          weekAvailablePersonDays: days.reduce((s, d) => s + d.availableUsers, 0),
-          weekTotalPersonDays:     days.reduce((s, d) => s + d.totalUsers, 0),
-        }
-      })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submissions, users, dates])
+  // ── Unique workflows for filter buttons ──────────────────────────────────
+  const workflows = useMemo(
+    () => [...new Set(users.map(u => u.workflow).filter(Boolean) as string[])].sort(),
+    [users],
+  )
 
   // ── Inline employee type update (from badge edit) ────────────────────────
   function handleEmpTypeUpdate(userId: string, newType: string) {
@@ -769,14 +913,16 @@ export default function OverviewPage() {
         </div>
 
         {/* Stats panel — admins and leads only */}
-        {(isAdmin || me.role === 'lead') && localeStats.length > 0 && (
+        {(isAdmin || me.role === 'lead') && (
           <StatsPanel
-            localeStats={localeStats}
-            dates={dates}
+            users={users}
+            workflows={workflows}
+            filterLocale={filterLocale}
+            onFilterLocale={setFilterLocale}
+            filterWorkflow={filterWorkflow}
+            onFilterWorkflow={setFilterWorkflow}
             open={statsOpen}
             onToggle={() => setStatsOpen(v => !v)}
-            activeLocale={statsLocale}
-            onSetLocale={setStatsLocale}
           />
         )}
 
