@@ -20,14 +20,19 @@ export async function GET() {
   const session = await verifyToken(token)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Freelancers cannot fetch the full user list; FTEs and admins can
-  if (session.role === 'freelancer')
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
-  const { data, error } = await db
+  // Scope rules (server-enforced from JWT):
+  //   admin / lead → all users
+  //   fte / freelancer → only users in their own locale
+  const baseQuery = db
     .from('users')
     .select('id, name, role, locale, employee_type, workflow')
-    .order('name', { ascending: true })
+
+  const scopedQuery =
+    (session.role === 'fte' || session.role === 'freelancer') && session.locale
+      ? baseQuery.eq('locale', session.locale)
+      : baseQuery
+
+  const { data, error } = await scopedQuery.order('name', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

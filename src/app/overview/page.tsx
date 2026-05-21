@@ -6,7 +6,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { StatusBadge } from '@/components/availability/StatusBadge'
 import { type AvailabilitySubmission, type AvailabilityStatus, STATUS_CONFIG } from '@/lib/availability-types'
 import { type UserSummary } from '@/app/api/users/route'
-import { ChevronLeft, ChevronRight, Pencil, CheckSquare, X, Check } from 'lucide-react'
+import { Pencil, CheckSquare, X } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,19 +21,27 @@ interface SessionUser {
 }
 
 interface UserRow {
-  userId: string
-  userName: string
+  userId:       string
+  userName:     string
+  role:         string | null
   employeeType: string | null
-  locale: string | null
-  workflow: string | null
-  submissions: Record<string, AvailabilitySubmission>
+  locale:       string | null
+  workflow:     string | null
+  submissions:  Record<string, AvailabilitySubmission>
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const VALID_STATUSES: AvailabilityStatus[] = [
   'AVAILABLE','PTO','BH','NO','SL','WA','UL','DH','PATERNITY','OTHER',
 ]
+const VALID_HOURS = [0, 2, 4, 6, 8, 10, 12]
+const EMPLOYEE_TYPES = ['FTE', 'FREELANCER', 'PM'] as const
+
+// Leads sort first within any group, then FTEs, then freelancers
+const ROLE_ORDER: Record<string, number> = { lead: 0, fte: 1, freelancer: 2, admin: 99 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getWeekDates(offset = 0): string[] {
   const now = new Date()
@@ -52,20 +60,83 @@ function fmtDate(d: string) {
   })
 }
 
+function empTypeLabel(t: string | null): string {
+  if (t === 'FREELANCER') return 'FL'
+  return t ?? ''
+}
+
+function empTypeClass(t: string | null): string {
+  if (t === 'FTE')        return 'bg-blue-100 text-blue-700'
+  if (t === 'PM')         return 'bg-purple-100 text-purple-700'
+  if (t === 'FREELANCER') return 'bg-gray-100 text-gray-500'
+  return 'bg-gray-100 text-gray-400'
+}
+
+// ── Employee type badge — editable for admins ─────────────────────────────────
+
+interface EmpBadgeProps {
+  row:      UserRow
+  isAdmin:  boolean
+  onUpdate: (userId: string, newType: string) => void
+}
+
+function EmployeeTypeBadge({ row, isAdmin, onUpdate }: EmpBadgeProps) {
+  const [editing, setEditing] = useState(false)
+
+  if (!row.employeeType) return null
+
+  if (isAdmin && editing) {
+    return (
+      <select
+        autoFocus
+        defaultValue={row.employeeType}
+        onChange={async e => {
+          const newType = e.target.value
+          setEditing(false)
+          await fetch('/api/admin/users', {
+            method:  'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ id: row.userId, employeeType: newType }),
+          })
+          onUpdate(row.userId, newType)
+        }}
+        onBlur={() => setEditing(false)}
+        className="text-[10px] px-1 py-0.5 rounded border border-blue-300 bg-white focus:outline-none cursor-pointer"
+      >
+        {EMPLOYEE_TYPES.map(t => (
+          <option key={t} value={t}>{empTypeLabel(t) || t}</option>
+        ))}
+      </select>
+    )
+  }
+
+  return (
+    <span
+      title={isAdmin ? 'Click to change type' : undefined}
+      onClick={isAdmin ? e => { e.stopPropagation(); setEditing(true) } : undefined}
+      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none transition-opacity ${
+        isAdmin ? 'cursor-pointer hover:opacity-70' : ''
+      } ${empTypeClass(row.employeeType)}`}
+    >
+      {empTypeLabel(row.employeeType)}
+    </span>
+  )
+}
+
 // ── Batch edit modal ──────────────────────────────────────────────────────────
 
 interface BatchModalProps {
-  dates: string[]
+  dates:           string[]
   selectedUserIds: string[]
-  users: UserSummary[]
-  onApplied: () => void
-  onClose: () => void
+  users:           UserSummary[]
+  onApplied:       () => void
+  onClose:         () => void
 }
 
 function BatchModal({ dates, selectedUserIds, users, onApplied, onClose }: BatchModalProps) {
   const [selectedDates, setSelectedDates] = useState<string[]>(dates)
   const [status, setStatus]               = useState<AvailabilityStatus>('AVAILABLE')
-  const [hours, setHours]                 = useState<number | null>(8)
+  const [hours,  setHours]                = useState<number | null>(8)
   const [saving, setSaving]               = useState(false)
   const [progress, setProgress]           = useState(0)
 
@@ -80,7 +151,6 @@ function BatchModal({ dates, selectedUserIds, users, onApplied, onClose }: Batch
     if (!selectedDates.length || !selectedUserIds.length) return
     setSaving(true)
 
-    // Build full task list: one entry per (user, date) pair
     const tasks: Array<{ userId: string; date: string }> = []
     for (const userId of selectedUserIds)
       for (const date of selectedDates)
@@ -90,11 +160,10 @@ function BatchModal({ dates, selectedUserIds, users, onApplied, onClose }: Batch
     let   done        = 0
     const CONCURRENCY = 5
 
-    // Fan out with a sliding window — never more than CONCURRENCY in-flight
     async function runTask(task: { userId: string; date: string }) {
       const u = userById[task.userId]
       await fetch('/api/availability', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId:            task.userId,
@@ -111,7 +180,6 @@ function BatchModal({ dates, selectedUserIds, users, onApplied, onClose }: Batch
       setProgress(Math.round((done / total) * 100))
     }
 
-    // Process in chunks of CONCURRENCY
     for (let i = 0; i < tasks.length; i += CONCURRENCY) {
       await Promise.all(tasks.slice(i, i + CONCURRENCY).map(runTask))
     }
@@ -181,7 +249,7 @@ function BatchModal({ dates, selectedUserIds, users, onApplied, onClose }: Batch
           <div className="mb-4">
             <p className="text-sm font-medium text-gray-700 mb-2">Hours</p>
             <div className="flex gap-2">
-              {[0, 2, 4, 6, 8, 10, 12].map(h => (
+              {VALID_HOURS.map(h => (
                 <button
                   key={h}
                   type="button"
@@ -202,10 +270,7 @@ function BatchModal({ dates, selectedUserIds, users, onApplied, onClose }: Batch
         {saving && (
           <div className="mb-4">
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 transition-all"
-                style={{ width: `${progress}%` }}
-              />
+              <div className="h-full bg-blue-500 transition-all" style={{ width: `${progress}%` }} />
             </div>
             <p className="text-xs text-gray-400 mt-1">{progress}% complete…</p>
           </div>
@@ -234,22 +299,22 @@ function BatchModal({ dates, selectedUserIds, users, onApplied, onClose }: Batch
 // ── Cell edit modal ───────────────────────────────────────────────────────────
 
 interface CellModalProps {
-  userId: string
+  userId:   string
   userName: string
-  date: string
+  date:     string
   existing: AvailabilitySubmission | null
-  user: UserSummary | undefined
-  onSaved: () => void
-  onClose: () => void
+  user:     UserSummary | undefined
+  onSaved:  () => void
+  onClose:  () => void
 }
 
 function CellModal({ userId, userName, date, existing, user, onSaved, onClose }: CellModalProps) {
-  const [status, setStatus]       = useState<AvailabilityStatus>(existing?.status ?? 'AVAILABLE')
-  const [hours, setHours]         = useState<number>(existing?.availabilityHours ?? 8)
+  const [status,    setStatus]    = useState<AvailabilityStatus>(existing?.status ?? 'AVAILABLE')
+  const [hours,     setHours]     = useState<number>(existing?.availabilityHours ?? 8)
   const [startTime, setStartTime] = useState(existing?.estimatedStartCet?.slice(0, 5) ?? '09:00')
-  const [notes, setNotes]         = useState(existing?.notes ?? '')
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState<string | null>(null)
+  const [notes,     setNotes]     = useState(existing?.notes ?? '')
+  const [saving,    setSaving]    = useState(false)
+  const [error,     setError]     = useState<string | null>(null)
 
   const needsHours     = status === 'AVAILABLE' || status === 'WA'
   const needsStartTime = needsHours && hours > 0
@@ -258,7 +323,7 @@ function CellModal({ userId, userName, date, existing, user, onSaved, onClose }:
     e.preventDefault()
     setSaving(true); setError(null)
     const res = await fetch('/api/availability', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId,
@@ -307,7 +372,7 @@ function CellModal({ userId, userName, date, existing, user, onSaved, onClose }:
           </div>
           {needsHours && (
             <div className="flex gap-1.5">
-              {[0, 2, 4, 6, 8, 10, 12].map(h => (
+              {VALID_HOURS.map(h => (
                 <button
                   key={h}
                   type="button"
@@ -366,31 +431,29 @@ function CellModal({ userId, userName, date, existing, user, onSaved, onClose }:
 
 export default function OverviewPage() {
   const router = useRouter()
-  const [me,      setMe]      = useState<SessionUser | null>(null)
-  const [users,   setUsers]   = useState<UserSummary[]>([])
+  const [me,          setMe]          = useState<SessionUser | null>(null)
+  const [users,       setUsers]       = useState<UserSummary[]>([])
   const [submissions, setSubmissions] = useState<AvailabilitySubmission[]>([])
-  const [loading, setLoading] = useState(false)
-  const [weekOffset, setWeek] = useState(0)
-  const [dates,   setDates]   = useState<string[]>(getWeekDates(0))
+  const [loading,     setLoading]     = useState(false)
+  const [weekOffset,  setWeek]        = useState(0)
+  const [dates,       setDates]       = useState<string[]>(getWeekDates(0))
 
   // Admin-only controls
-  const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set())
-  const [batchOpen,    setBatchOpen]    = useState(false)
-  const [cellEdit,     setCellEdit]     = useState<{ userId: string; date: string } | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [batchOpen,   setBatchOpen]   = useState(false)
+  const [cellEdit,    setCellEdit]    = useState<{ userId: string; date: string } | null>(null)
 
   const isAdmin = me?.role === 'admin'
 
-  // Auth + initial data load
+  // Auth + initial user list load
   useEffect(() => {
     fetch('/api/auth/me').then(r => {
       if (r.status === 401) { router.push('/login'); return null }
       return r.json()
     }).then(data => {
       if (!data) return
-      const role: AppRole = data.user.role
-      // Only admin, lead, fte, freelancer can access (all roles can, but freelancer sees own locale only)
       setMe(data.user)
-      fetch('/api/users').then(r => r.json()).then((us: UserSummary[]) => {
+      fetch('/api/users').then(r => r.ok ? r.json() : []).then((us: UserSummary[]) => {
         if (Array.isArray(us)) setUsers(us)
       })
     })
@@ -400,10 +463,8 @@ export default function OverviewPage() {
     if (!me) return
     setLoading(true)
     const params = new URLSearchParams({ from: ds[0], to: ds[ds.length - 1] })
-    // Scope non-admins to their locale
-    if (me.role !== 'admin' && me.locale) params.set('locale', me.locale)
-    const res  = await fetch(`/api/availability?${params}`)
-    const data = await res.json()
+    const res    = await fetch(`/api/availability?${params}`)
+    const data   = await res.json()
     setSubmissions(Array.isArray(data) ? data : [])
     setLoading(false)
   }, [me])
@@ -417,12 +478,7 @@ export default function OverviewPage() {
 
   const userById = Object.fromEntries(users.map(u => [u.id, u]))
 
-  // ── Role-based filtering ──────────────────────────────────────────────────
-  // admin  → all users
-  // lead   → all employee types in their locale
-  // fte    → only FTE users in their locale
-  // freelancer → only FREELANCER users in their locale
-
+  // ── Role-based visibility ─────────────────────────────────────────────────
   function isVisible(u: UserSummary): boolean {
     if (!me) return false
     if (me.role === 'admin') return true
@@ -433,36 +489,51 @@ export default function OverviewPage() {
     return false
   }
 
-  // Build row map from submissions, filtered by role
+  // ── Build row map from users (not submissions) ────────────────────────────
+  // This ensures every in-scope user appears even with no submissions for the week.
   const rowMap: Record<string, UserRow> = {}
-  for (const s of submissions) {
-    const u = userById[s.userId]
-    if (u && !isVisible(u)) continue
-    if (!rowMap[s.userId]) {
-      rowMap[s.userId] = {
-        userId:       s.userId,
-        userName:     u?.name ?? s.userId,
-        employeeType: u?.employeeType ?? null,
-        locale:       u?.locale ?? null,
-        workflow:     u?.workflow ?? null,
-        submissions:  {},
-      }
+  for (const u of users) {
+    if (!isVisible(u)) continue
+    rowMap[u.id] = {
+      userId:       u.id,
+      userName:     u.name,
+      role:         u.role,
+      employeeType: u.employeeType,
+      locale:       u.locale ?? null,
+      workflow:     u.workflow ?? null,
+      submissions:  {},
     }
-    rowMap[s.userId].submissions[s.date] = s
+  }
+  // Overlay actual submissions onto the rows
+  for (const s of submissions) {
+    if (rowMap[s.userId]) {
+      rowMap[s.userId].submissions[s.date] = s
+    }
   }
 
-  // Group by locale → Management last, sorted alphabetically within group
+  // ── Group by locale; Management (locale=null) always last ─────────────────
   const groupMap: Record<string, UserRow[]> = {}
   for (const row of Object.values(rowMap)) {
     const key = row.locale ?? '__management__'
     if (!groupMap[key]) groupMap[key] = []
     groupMap[key].push(row)
   }
+  // Sort within groups: leads first, then by role order, then alphabetically
   for (const key of Object.keys(groupMap)) {
-    groupMap[key].sort((a, b) => a.userName.localeCompare(b.userName))
+    groupMap[key].sort((a, b) => {
+      const ra = ROLE_ORDER[a.role ?? ''] ?? 10
+      const rb = ROLE_ORDER[b.role ?? ''] ?? 10
+      if (ra !== rb) return ra - rb
+      return a.userName.localeCompare(b.userName)
+    })
   }
   const groupKeys = Object.keys(groupMap).filter(k => k !== '__management__').sort()
   if (groupMap['__management__']) groupKeys.push('__management__')
+
+  // ── Inline employee type update (from badge edit) ────────────────────────
+  function handleEmpTypeUpdate(userId: string, newType: string) {
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, employeeType: newType } : u))
+  }
 
   const allVisibleIds = Object.values(rowMap).map(r => r.userId)
   const allSelected   = allVisibleIds.length > 0 && allVisibleIds.every(id => selectedIds.has(id))
@@ -473,7 +544,7 @@ export default function OverviewPage() {
 
   const weekLabel = weekOffset === 0 ? 'This week'
     : weekOffset === -1 ? 'Last week'
-    : weekOffset === 1  ? 'Next week'
+    : weekOffset ===  1 ? 'Next week'
     : `Week ${weekOffset > 0 ? '+' : ''}${weekOffset}`
 
   const cellTarget = cellEdit
@@ -514,12 +585,7 @@ export default function OverviewPage() {
               <tr className="border-b border-gray-100">
                 {isAdmin && (
                   <th className="px-3 py-3 w-8">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleAll}
-                      className="rounded"
-                    />
+                    <input type="checkbox" checked={allSelected} onChange={toggleAll} className="rounded" />
                   </th>
                 )}
                 <th className="text-left px-4 py-3 font-medium text-gray-500 w-48">User</th>
@@ -532,9 +598,13 @@ export default function OverviewPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-gray-400">Loading…</td></tr>
+                <tr>
+                  <td colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-gray-400">Loading…</td>
+                </tr>
               ) : groupKeys.length === 0 ? (
-                <tr><td colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-gray-400">No submissions for this period</td></tr>
+                <tr>
+                  <td colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-gray-400">No users found</td>
+                </tr>
               ) : groupKeys.map(key => (
                 <>
                   {/* Group header */}
@@ -545,7 +615,7 @@ export default function OverviewPage() {
                           type="checkbox"
                           checked={groupMap[key].every(r => selectedIds.has(r.userId))}
                           onChange={() => {
-                            const ids = groupMap[key].map(r => r.userId)
+                            const ids  = groupMap[key].map(r => r.userId)
                             const allIn = ids.every(id => selectedIds.has(id))
                             setSelectedIds(prev => {
                               const next = new Set(prev)
@@ -566,7 +636,10 @@ export default function OverviewPage() {
 
                   {/* User rows */}
                   {groupMap[key].map(row => (
-                    <tr key={row.userId} className={`border-b border-gray-50 hover:bg-gray-50/50 ${selectedIds.has(row.userId) ? 'bg-blue-50/30' : ''}`}>
+                    <tr
+                      key={row.userId}
+                      className={`border-b border-gray-50 hover:bg-gray-50/50 ${selectedIds.has(row.userId) ? 'bg-blue-50/30' : ''}`}
+                    >
                       {isAdmin && (
                         <td className="px-3 py-3">
                           <input
@@ -584,12 +657,7 @@ export default function OverviewPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           <p className="font-medium text-gray-900">{row.userName}</p>
-                          {row.employeeType === 'FTE' && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 leading-none">FTE</span>
-                          )}
-                          {row.employeeType === 'FREELANCER' && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-500 leading-none">FL</span>
-                          )}
+                          <EmployeeTypeBadge row={row} isAdmin={isAdmin} onUpdate={handleEmpTypeUpdate} />
                         </div>
                         {row.workflow && <p className="text-xs text-gray-400 mt-0.5">{row.workflow}</p>}
                       </td>
@@ -605,7 +673,7 @@ export default function OverviewPage() {
                               <div className="flex flex-col items-center gap-0.5 relative">
                                 <StatusBadge status={s.status} employeeType={row.employeeType} hours={s.availabilityHours} size="sm" />
                                 {s.estimatedStartCet && (
-                                  <span className="text-[10px] text-gray-400">{s.estimatedStartCet.slice(0,5)}</span>
+                                  <span className="text-[10px] text-gray-400">{s.estimatedStartCet.slice(0, 5)}</span>
                                 )}
                                 {isAdmin && (
                                   <Pencil className="w-2.5 h-2.5 text-blue-400 opacity-0 group-hover:opacity-100 absolute top-0 right-0 transition-opacity" />
@@ -629,7 +697,7 @@ export default function OverviewPage() {
         <p className="text-xs text-gray-400">
           Viewing as <span className="font-medium text-gray-600">{me.role}</span>
           {me.locale && <> · <span className="font-medium text-gray-600">{me.locale}</span></>}
-          {isAdmin && <span className="ml-2 text-blue-500">Click any cell to edit · Select rows for batch edit</span>}
+          {isAdmin && <span className="ml-2 text-blue-500">Click any cell to edit · Select rows for batch edit · Click FTE/FL badge to reassign</span>}
         </p>
       </div>
 

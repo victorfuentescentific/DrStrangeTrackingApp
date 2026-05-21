@@ -36,7 +36,7 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  let body: { id: string; password?: string; role?: string; locale?: string | null; name?: string }
+  let body: { id: string; password?: string; role?: string; locale?: string | null; name?: string; employeeType?: string | null }
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
@@ -50,9 +50,10 @@ export async function PATCH(req: NextRequest) {
     updates.password_hash = await bcrypt.hash(body.password, 10)
   }
 
-  if (body.role     !== undefined) updates.role   = body.role
-  if (body.locale   !== undefined) updates.locale = body.locale ?? null
-  if (body.name     !== undefined) updates.name   = body.name
+  if (body.role         !== undefined) updates.role          = body.role
+  if (body.locale       !== undefined) updates.locale        = body.locale ?? null
+  if (body.name         !== undefined) updates.name          = body.name
+  if (body.employeeType !== undefined) updates.employee_type = body.employeeType ?? null
 
   if (Object.keys(updates).length === 0)
     return NextResponse.json({ error: 'Nothing to update' }, { status: 422 })
