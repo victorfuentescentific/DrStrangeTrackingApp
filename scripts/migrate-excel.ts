@@ -17,13 +17,9 @@ import * as dotenv from 'dotenv'
 import * as path from 'path'
 import * as fs from 'fs'
 
+// Load env first — must happen before any process.env access
 dotenv.config({ path: path.join(__dirname, '..', '.env.local') })
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-)
+dotenv.config({ path: path.join(__dirname, '..', '.env') }) // fallback
 
 // ── Absence code → hours (FTE sheet) ─────────────────────────────────────────
 // Source: availability-agent skill, references/absence_codes.md
@@ -91,6 +87,17 @@ async function main() {
     console.error('Usage: npx ts-node scripts/migrate-excel.ts "<path-to-xlsx>"')
     process.exit(1)
   }
+
+  const supabaseUrl = process.env.SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseKey) {
+    console.error('❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local')
+    console.error(`   SUPABASE_URL = ${supabaseUrl ?? '(not set)'}`)
+    console.error(`   SUPABASE_SERVICE_ROLE_KEY = ${supabaseKey ? '(set)' : '(not set)'}`)
+    process.exit(1)
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } })
 
   console.log(`\n📂 Reading: ${filePath}`)
   const wb = XLSX.readFile(filePath, { cellDates: false, raw: true })
@@ -223,13 +230,39 @@ async function main() {
 
   const flData = XLSX.utils.sheet_to_json<unknown[]>(flSheet, { header: 1, raw: true }) as unknown[][]
 
-  // Date headers: row 7 (index 6), col 5 (index 5) onwards
-  const flHeaderRow = flData[6] as unknown[]
+  // Date headers: scan rows 5–8 (indices 4–7) to find the row with the most date-like values
+  // FL sheet stores dates as strings ("1/1/2026", "01-Jan-26", etc.) or Excel serials
   const flDateMap: Record<number, string> = {}
+  let bestHeaderRowIdx = 6
+  let bestCount = 0
+
+  for (let ri = 4; ri <= 8; ri++) {
+    const testRow = flData[ri] as unknown[]
+    if (!testRow) continue
+    let count = 0
+    for (let c = 5; c < Math.min(testRow.length, 800); c++) {
+      const h = testRow[c]
+      if (typeof h === 'number' && h > 40000) count++
+      else if (typeof h === 'string') {
+        const p = new Date(h.trim())
+        if (!isNaN(p.getTime()) && p.getFullYear() >= 2025) count++
+      }
+    }
+    if (count > bestCount) { bestCount = count; bestHeaderRowIdx = ri }
+  }
+
+  const flHeaderRow = flData[bestHeaderRowIdx] as unknown[]
+  console.log(`   Using header row index ${bestHeaderRowIdx} (${bestCount} date-like values)`)
+
   for (let c = 5; c < flHeaderRow.length; c++) {
     const h = flHeaderRow[c]
     if (typeof h === 'number' && h > 40000) {
       flDateMap[c] = excelDateToISO(h)
+    } else if (typeof h === 'string' && h.trim()) {
+      const p = new Date(h.trim())
+      if (!isNaN(p.getTime()) && p.getFullYear() >= 2025) {
+        flDateMap[c] = p.toISOString().slice(0, 10)
+      }
     }
   }
   console.log(`   Found ${Object.keys(flDateMap).length} date columns`)
@@ -283,7 +316,6 @@ async function main() {
         is_manager: false,
         is_active: true,
         password_hash: '$2b$10$placeholder_no_login',
-        flagged_for_review: true,
       })
       if (uErr) { errors.push(`FL user create failed for ${person.name}: ${uErr.message}`); continue }
       userId = newId
@@ -367,7 +399,8 @@ async function main() {
       const dateFrom = typeof rawFrom === 'number' ? excelDateToISO(rawFrom) : String(rawFrom).slice(0,10)
       const dateTo   = typeof rawTo   === 'number' ? excelDateToISO(rawTo)   : String(rawTo).slice(0,10)
 
-      const { data: user } = await supabase.from('users').select('id').ilike('name', name).maybeSingle()
+      // Use partial match — imported names may have location suffixes
+      const { data: user } = await supabase.from('users').select('id').ilike('name', `%${name}%`).maybeSingle()
       if (!user) { errors.push(`WA: user not found for ${name}`); continue }
 
       const { error } = await supabase.from('work_abroad_requests').insert({
