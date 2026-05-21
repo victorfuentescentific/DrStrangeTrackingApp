@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { StatusBadge } from '@/components/availability/StatusBadge'
 import { type AvailabilitySubmission, type AvailabilityStatus, STATUS_CONFIG } from '@/lib/availability-types'
 import { type UserSummary } from '@/app/api/users/route'
-import { Pencil, CheckSquare, X } from 'lucide-react'
+import { Pencil, CheckSquare, X, ChevronDown } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -427,6 +427,159 @@ function CellModal({ userId, userName, date, existing, user, onSaved, onClose }:
   )
 }
 
+// ── Stats panel ───────────────────────────────────────────────────────────────
+
+interface DayStat {
+  date:           string
+  totalUsers:     number
+  availableUsers: number
+  totalHours:     number
+  missingCount:   number
+}
+
+interface LocaleStats {
+  locale:                  string
+  label:                   string
+  days:                    DayStat[]
+  weekTotalHours:          number
+  weekAvailablePersonDays: number
+  weekTotalPersonDays:     number
+}
+
+function coverageColor(rate: number) {
+  if (rate >= 0.8) return 'bg-emerald-50 border-emerald-200 text-emerald-700'
+  if (rate >= 0.5) return 'bg-amber-50 border-amber-200 text-amber-700'
+  return 'bg-red-50 border-red-200 text-red-600'
+}
+
+function coverageDot(rate: number) {
+  if (rate >= 0.8) return 'bg-emerald-400'
+  if (rate >= 0.5) return 'bg-amber-400'
+  return 'bg-red-400'
+}
+
+interface StatsPanelProps {
+  localeStats:  LocaleStats[]
+  dates:        string[]
+  open:         boolean
+  onToggle:     () => void
+  activeLocale: string
+  onSetLocale:  (l: string) => void
+}
+
+function StatsPanel({ localeStats, dates, open, onToggle, activeLocale, onSetLocale }: StatsPanelProps) {
+  const emptyDays: DayStat[] = dates.map(d => ({
+    date: d, totalUsers: 0, availableUsers: 0, totalHours: 0, missingCount: 0,
+  }))
+
+  const allStats: LocaleStats = localeStats.reduce((acc, ls) => ({
+    locale:                  '__all__',
+    label:                   'All',
+    weekTotalHours:          acc.weekTotalHours + ls.weekTotalHours,
+    weekAvailablePersonDays: acc.weekAvailablePersonDays + ls.weekAvailablePersonDays,
+    weekTotalPersonDays:     acc.weekTotalPersonDays + ls.weekTotalPersonDays,
+    days: acc.days.map((d, i) => ({
+      date:           d.date,
+      totalUsers:     d.totalUsers     + ls.days[i].totalUsers,
+      availableUsers: d.availableUsers + ls.days[i].availableUsers,
+      totalHours:     d.totalHours     + ls.days[i].totalHours,
+      missingCount:   d.missingCount   + ls.days[i].missingCount,
+    })),
+  }), { locale: '__all__', label: 'All', weekTotalHours: 0, weekAvailablePersonDays: 0, weekTotalPersonDays: 0, days: emptyDays })
+
+  const active = activeLocale === '__all__'
+    ? allStats
+    : (localeStats.find(ls => ls.locale === activeLocale) ?? allStats)
+
+  const weekRate = active.weekTotalPersonDays > 0
+    ? active.weekAvailablePersonDays / active.weekTotalPersonDays
+    : 1
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Team Coverage</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${coverageColor(weekRate)}`}>
+            {Math.round(weekRate * 100)}% this week
+          </span>
+        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 border-t border-gray-50">
+          {/* Locale tabs */}
+          <div className="flex gap-1.5 pt-3 pb-4 flex-wrap">
+            <button
+              onClick={() => onSetLocale('__all__')}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                activeLocale === '__all__'
+                  ? 'bg-slate-800 text-white border-slate-800'
+                  : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              }`}
+            >
+              All locales
+            </button>
+            {localeStats.map(ls => (
+              <button
+                key={ls.locale}
+                onClick={() => onSetLocale(ls.locale)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  activeLocale === ls.locale
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                }`}
+              >
+                {ls.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Day cards */}
+          <div className="grid grid-cols-5 gap-2">
+            {active.days.map(day => {
+              const rate = day.totalUsers > 0 ? day.availableUsers / day.totalUsers : 1
+              return (
+                <div key={day.date} className={`rounded-xl border px-3 py-3 ${coverageColor(rate)}`}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide opacity-60 mb-1.5">
+                    {new Date(day.date + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}
+                  </p>
+                  <p className="text-2xl font-bold leading-none">{day.totalHours}h</p>
+                  <p className="text-[11px] mt-1.5 opacity-80">
+                    {day.availableUsers}/{day.totalUsers} available
+                  </p>
+                  {day.missingCount > 0 && (
+                    <p className="text-[10px] mt-0.5 opacity-50">{day.missingCount} not submitted</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Week summary */}
+          <div className="mt-3 flex items-center gap-3 px-1 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${coverageDot(weekRate)}`} />
+              <span className="text-sm font-semibold text-gray-800">{active.weekTotalHours}h</span>
+              <span className="text-xs text-gray-400">week total</span>
+            </div>
+            <span className="text-xs text-gray-300">·</span>
+            <span className="text-xs text-gray-500">
+              {active.weekAvailablePersonDays}/{active.weekTotalPersonDays} person-days
+            </span>
+            <span className="text-xs text-gray-300">·</span>
+            <span className="text-xs text-gray-500">{Math.round(weekRate * 100)}% attendance rate</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function OverviewPage() {
@@ -442,6 +595,10 @@ export default function OverviewPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchOpen,   setBatchOpen]   = useState(false)
   const [cellEdit,    setCellEdit]    = useState<{ userId: string; date: string } | null>(null)
+
+  // Stats panel
+  const [statsOpen,   setStatsOpen]   = useState(true)
+  const [statsLocale, setStatsLocale] = useState('__all__')
 
   const isAdmin = me?.role === 'admin'
 
@@ -530,6 +687,39 @@ export default function OverviewPage() {
   const groupKeys = Object.keys(groupMap).filter(k => k !== '__management__').sort()
   if (groupMap['__management__']) groupKeys.push('__management__')
 
+  // ── Compute stats for the panel (pure derivation from groupMap) ───────────
+  const localeStats = useMemo<LocaleStats[]>(() => {
+    return groupKeys
+      .filter(k => k !== '__management__')
+      .map(locale => {
+        const rows = groupMap[locale] ?? []
+        const days: DayStat[] = dates.map(date => {
+          let availableUsers = 0
+          let totalHours     = 0
+          let missingCount   = 0
+          for (const row of rows) {
+            const sub = row.submissions[date]
+            if (!sub) {
+              missingCount++
+            } else if (sub.status === 'AVAILABLE' || sub.status === 'WA') {
+              availableUsers++
+              totalHours += sub.availabilityHours ?? 0
+            }
+          }
+          return { date, totalUsers: rows.length, availableUsers, totalHours, missingCount }
+        })
+        return {
+          locale,
+          label:                   locale.replace('_', '-'),
+          days,
+          weekTotalHours:          days.reduce((s, d) => s + d.totalHours, 0),
+          weekAvailablePersonDays: days.reduce((s, d) => s + d.availableUsers, 0),
+          weekTotalPersonDays:     days.reduce((s, d) => s + d.totalUsers, 0),
+        }
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submissions, users, dates])
+
   // ── Inline employee type update (from badge edit) ────────────────────────
   function handleEmpTypeUpdate(userId: string, newType: string) {
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, employeeType: newType } : u))
@@ -577,6 +767,18 @@ export default function OverviewPage() {
             </button>
           )}
         </div>
+
+        {/* Stats panel — admins and leads only */}
+        {(isAdmin || me.role === 'lead') && localeStats.length > 0 && (
+          <StatsPanel
+            localeStats={localeStats}
+            dates={dates}
+            open={statsOpen}
+            onToggle={() => setStatsOpen(v => !v)}
+            activeLocale={statsLocale}
+            onSetLocale={setStatsLocale}
+          />
+        )}
 
         {/* Table */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
