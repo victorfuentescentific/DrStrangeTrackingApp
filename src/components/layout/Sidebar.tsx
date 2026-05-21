@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ListChecks, Kanban, BarChart3, Bot,
   Settings, ChevronRight, CalendarDays, Calculator, Clock,
-  CalendarCheck, Users, Plane, ShieldCheck, UserCog,
+  CalendarCheck, Users, Plane, ShieldCheck, UserCog, NotebookPen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/hooks/useSession'
@@ -50,6 +50,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: '/admin/submissions', label: 'Submissions', icon: ShieldCheck },
       { href: '/admin/users',       label: 'Users',       icon: Users },
+      { href: '/notes',             label: 'Notes & Links', icon: NotebookPen },
     ],
   },
 ]
@@ -66,25 +67,26 @@ export function Sidebar() {
   })).filter(section => section.items.length > 0)
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 w-60 bg-slate-900 flex flex-col">
+    <aside className="fixed inset-y-0 left-0 z-40 w-60 flex flex-col overflow-hidden bg-gradient-to-b from-deep-1000 via-deep-900 to-deep-1000">
+      {/* Subtle amber light behind the logo area */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48 rounded-full bg-brand-500/10 blur-3xl pointer-events-none" />
+
       {/* Logo */}
-      <div className="h-16 flex items-center px-5 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center">
-            <Kanban className="w-4 h-4 text-white" />
-          </div>
+      <div className="relative h-16 flex items-center px-5 border-b border-white/5">
+        <div className="flex items-center gap-2.5">
+          <BrandSeal />
           <div>
-            <div className="text-sm font-bold text-white">Dr. Strange Portal</div>
-            <div className="text-[10px] text-slate-400">EU LLM Data — PM Suite</div>
+            <div className="text-sm font-bold text-brand-100 tracking-wide leading-tight">Dr. Strange Portal</div>
+            <div className="text-[10px] text-accent-100/60 tracking-widest uppercase">EU LLM Data</div>
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+      <nav className="relative flex-1 px-3 py-4 space-y-4 overflow-y-auto">
         {visibleSections.map(section => (
           <div key={section.label}>
-            <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+            <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-accent-100/40">
               {section.label}
             </p>
             <div className="space-y-0.5">
@@ -95,17 +97,20 @@ export function Sidebar() {
                     key={href}
                     href={href}
                     className={cn(
-                      'flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors',
+                      'group relative flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all',
                       active
-                        ? 'bg-brand-600 text-white'
-                        : 'text-slate-400 hover:bg-slate-800 hover:text-white',
+                        ? 'bg-white/[0.06] text-brand-200 shadow-[inset_2px_0_0_0_rgba(245,158,11,0.8)]'
+                        : 'text-slate-400 hover:bg-white/[0.04] hover:text-brand-100',
                     )}
                   >
                     <div className="flex items-center gap-2.5">
-                      <Icon className="w-4 h-4 flex-shrink-0" />
+                      <Icon className={cn(
+                        'w-4 h-4 flex-shrink-0 transition-colors',
+                        active ? 'text-brand-300' : 'text-slate-500 group-hover:text-brand-200',
+                      )} />
                       <span className="font-medium">{label}</span>
                     </div>
-                    {active && <ChevronRight className="w-3 h-3 opacity-60" />}
+                    {active && <ChevronRight className="w-3 h-3 text-brand-300/60" />}
                   </Link>
                 )
               })}
@@ -115,14 +120,51 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="p-3 border-t border-slate-800">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800">
-          <div className="w-6 h-6 rounded-full bg-brand-500 flex items-center justify-center">
+      <div className="relative p-3 border-t border-white/5">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/5">
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-500 to-accent-700 flex items-center justify-center shadow-brand-glow">
             <Settings className="w-3 h-3 text-white" />
           </div>
-          <span className="text-xs text-slate-400">MVP v0.1</span>
+          <span className="text-[11px] text-accent-100/50 tracking-wide">MVP v0.1</span>
         </div>
       </div>
     </aside>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BrandSeal — a small rotating sacred-circle glyph used as the sidebar logo.
+// Custom hand-drawn SVG, not copyrighted artwork.
+// ─────────────────────────────────────────────────────────────────────────────
+function BrandSeal() {
+  return (
+    <div className="relative w-8 h-8 flex-shrink-0">
+      {/* Subtle amber halo */}
+      <div className="absolute inset-0 rounded-full bg-brand-500/20 blur-md" />
+      {/* Outer rotating ring */}
+      <svg
+        viewBox="0 0 32 32"
+        className="absolute inset-0 spin-very-slow"
+        fill="none"
+        stroke="currentColor"
+      >
+        <circle cx="16" cy="16" r="14" strokeDasharray="1.5 3" className="text-brand-400/70" strokeWidth="0.8" />
+        <circle cx="16" cy="16" r="10" className="text-brand-300/40" strokeWidth="0.5" />
+      </svg>
+      {/* Inner static glyph */}
+      <svg
+        viewBox="0 0 32 32"
+        className="absolute inset-0"
+        fill="none"
+        stroke="currentColor"
+      >
+        <polygon
+          points="16,7 22,12 22,20 16,25 10,20 10,12"
+          className="text-brand-300"
+          strokeWidth="1"
+        />
+        <circle cx="16" cy="16" r="2.5" fill="currentColor" className="text-brand-300" />
+      </svg>
+    </div>
   )
 }

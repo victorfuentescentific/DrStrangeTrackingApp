@@ -16,10 +16,12 @@ export function Header({ title, subtitle }: HeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false)
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0">
+    <header className="relative h-16 bg-white/80 backdrop-blur-sm border-b border-slate-200/70 flex items-center justify-between px-6 flex-shrink-0">
+      {/* Faint gradient underline accent */}
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-brand-400/30 to-transparent pointer-events-none" />
       <div>
-        <h1 className="text-lg font-semibold text-slate-900">{title}</h1>
-        {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+        <h1 className="text-lg font-semibold text-slate-900 tracking-tight">{title}</h1>
+        {subtitle && <p className="text-xs text-slate-500 tracking-wide">{subtitle}</p>}
       </div>
 
       <div className="flex items-center gap-3">

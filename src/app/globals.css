@@ -15,25 +15,44 @@
 body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Subtle warm canvas — almost white, with a hint of cream/parchment.
+     Keeps data surfaces readable while breaking the stock-startup-blue feel. */
+  background-color: #fafaf7;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+/* ─────────────────────────────────────────────────────────────────────────
+   App canvas — fixed, low-opacity radial gradient washes that give every
+   page a quiet glow without affecting readability of cards/tables on top.
+   Two off-center orbs (amber + violet) referencing the login aesthetic.
+   ───────────────────────────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(245, 158, 11, 0.06), transparent 45%),
+    radial-gradient(circle at 82% 88%, rgba(124, 58, 237, 0.05), transparent 50%);
 }
 
-/* Markdown output */
+/* All app content sits above the canvas wash */
+main, header, aside {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Scrollbar — slim, warm-neutral
+   ───────────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Markdown output
+   ───────────────────────────────────────────────────────────────────── */
 .markdown h2 { @apply text-base font-bold text-slate-800 mt-4 mb-1; }
 .markdown h3 { @apply text-sm font-semibold text-slate-700 mt-3 mb-1; }
 .markdown p  { @apply text-sm text-slate-600 mb-2; }
@@ -42,3 +61,12 @@ body {
 .markdown strong { @apply font-semibold text-slate-800; }
 .markdown code { @apply bg-slate-100 text-slate-700 px-1 py-0.5 rounded text-xs font-mono; }
 .markdown pre  { @apply bg-slate-800 text-slate-100 p-3 rounded-lg text-xs font-mono overflow-auto my-2; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Slow rotation utility for ambient accents (used by sidebar logo glyph).
+   ───────────────────────────────────────────────────────────────────── */
+@keyframes spin-very-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spin-very-slow { animation: spin-very-slow 90s linear infinite; }
