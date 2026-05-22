@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { StatusBadge } from '@/components/availability/StatusBadge'
 import { type AvailabilitySubmission, type AvailabilityStatus, STATUS_CONFIG } from '@/lib/availability-types'
 import { type UserSummary } from '@/app/api/users/route'
-import { Pencil, CheckSquare, X, ChevronDown } from 'lucide-react'
+import { Pencil, CheckSquare, X, ChevronDown, Calendar } from 'lucide-react'
+import { DayPicker, type DateRange as DayPickerRange } from 'react-day-picker'
+import 'react-day-picker/style.css'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -429,30 +431,161 @@ function CellModal({ userId, userName, date, existing, user, onSaved, onClose }:
 
 // ── Stats panel ───────────────────────────────────────────────────────────────
 
-type StatsRange = 'week' | 'week-2' | 'week-4'
-
-const RANGE_LABELS: Record<StatsRange, string> = {
-  'week':   'This week',
-  'week-2': 'Last 2 weeks',
-  'week-4': 'Last 4 weeks',
+/** Extract Mon–Fri dates between two ISO date strings (inclusive). */
+function getWorkingDays(from: string, to: string): string[] {
+  const days: string[] = []
+  const end = new Date(to   + 'T12:00:00Z')
+  const cur = new Date(from + 'T12:00:00Z')
+  while (cur <= end) {
+    const dow = cur.getUTCDay()
+    if (dow !== 0 && dow !== 6) days.push(cur.toISOString().slice(0, 10))
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  }
+  return days
 }
 
-function getRangeDates(range: StatsRange): string[] {
+function fmtShort(iso: string) {
+  return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+function rangeLabel(from: string, to: string) {
+  return `${fmtShort(from)} – ${fmtShort(to)}`
+}
+
+function currentWeekBounds(): { from: string; to: string } {
   const today = new Date()
   const mon   = new Date(today)
   mon.setDate(today.getDate() - ((today.getDay() + 6) % 7))
   mon.setHours(12, 0, 0, 0)
-  const weeks = range === 'week' ? 1 : range === 'week-2' ? 2 : 4
-  const start = new Date(mon)
-  start.setDate(mon.getDate() - (weeks - 1) * 7)
-  const days: string[] = []
-  for (let w = 0; w < weeks; w++)
-    for (let d = 0; d < 5; d++) {
-      const dt = new Date(start)
-      dt.setDate(start.getDate() + w * 7 + d)
-      days.push(dt.toISOString().slice(0, 10))
+  const fri = new Date(mon)
+  fri.setDate(mon.getDate() + 4)
+  return { from: mon.toISOString().slice(0, 10), to: fri.toISOString().slice(0, 10) }
+}
+
+function buildPresets(): Array<{ label: string; from: string; to: string }> {
+  const today = new Date()
+  const mon   = new Date(today)
+  mon.setDate(today.getDate() - ((today.getDay() + 6) % 7))
+  mon.setHours(12, 0, 0, 0)
+  const monN = (n: number) => { const d = new Date(mon); d.setDate(mon.getDate() - n * 7);     return d.toISOString().slice(0, 10) }
+  const friN = (n: number) => { const d = new Date(mon); d.setDate(mon.getDate() - n * 7 + 4); return d.toISOString().slice(0, 10) }
+  return [
+    { label: 'This week',    from: monN(0), to: friN(0) },
+    { label: 'Last week',    from: monN(1), to: friN(1) },
+    { label: 'Last 2 weeks', from: monN(1), to: friN(0) },
+    { label: 'Last 4 weeks', from: monN(3), to: friN(0) },
+  ]
+}
+
+// ── Date range picker ─────────────────────────────────────────────────────────
+
+interface DateRangeValue { from: string; to: string }
+
+function DateRangePicker({ value, onChange }: { value: DateRangeValue; onChange: (r: DateRangeValue) => void }) {
+  const [open,     setOpen]     = useState(false)
+  const [selected, setSelected] = useState<DayPickerRange | undefined>({
+    from: new Date(value.from + 'T12:00:00Z'),
+    to:   new Date(value.to   + 'T12:00:00Z'),
+  })
+  const ref     = useRef<HTMLDivElement>(null)
+  const presets = useMemo(buildPresets, [])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
-  return days
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Keep calendar selection in sync when parent resets value
+  useEffect(() => {
+    setSelected({ from: new Date(value.from + 'T12:00:00Z'), to: new Date(value.to + 'T12:00:00Z') })
+  }, [value.from, value.to])
+
+  function handleSelect(range: DayPickerRange | undefined) {
+    setSelected(range)
+    // Auto-close and apply once both ends are chosen
+    if (range?.from && range?.to) {
+      onChange({ from: range.from.toISOString().slice(0, 10), to: range.to.toISOString().slice(0, 10) })
+      setOpen(false)
+    }
+  }
+
+  function applyPreset(from: string, to: string) {
+    setSelected({ from: new Date(from + 'T12:00:00Z'), to: new Date(to + 'T12:00:00Z') })
+    onChange({ from, to })
+    setOpen(false)
+  }
+
+  const isPreset = (p: ReturnType<typeof buildPresets>[0]) => value.from === p.from && value.to === p.to
+
+  return (
+    <div className="relative" ref={ref}>
+      {/* Trigger button */}
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+      >
+        <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+        <span className="font-medium">{rangeLabel(value.from, value.to)}</span>
+        <ChevronDown className="w-3 h-3 text-gray-400" />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 z-50 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden flex">
+
+          {/* Presets sidebar */}
+          <div className="border-r border-gray-100 p-4 w-44 flex-shrink-0">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Quick select</p>
+            <div className="flex flex-col gap-0.5">
+              {presets.map(p => (
+                <button
+                  key={p.label}
+                  onClick={() => applyPreset(p.from, p.to)}
+                  className={`text-left w-full px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                    isPreset(p) ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <p className="leading-none">{p.label}</p>
+                  <p className={`text-[10px] font-normal mt-0.5 ${isPreset(p) ? 'text-blue-400' : 'text-gray-400'}`}>
+                    {rangeLabel(p.from, p.to)}
+                  </p>
+                </button>
+              ))}
+            </div>
+            <p className="text-[9px] text-gray-300 mt-4 leading-snug">
+              Weekends are disabled — only working days are counted.
+            </p>
+          </div>
+
+          {/* DayPicker calendar */}
+          <div
+            className="p-4"
+            style={{
+              '--rdp-accent-color':            '#2563eb',
+              '--rdp-accent-background-color': '#eff6ff',
+              '--rdp-range_middle-background-color': '#dbeafe',
+              '--rdp-day-height':         '36px',
+              '--rdp-day-width':          '36px',
+              '--rdp-day_button-height':  '34px',
+              '--rdp-day_button-width':   '34px',
+              '--rdp-months-gap':         '1.5rem',
+            } as React.CSSProperties}
+          >
+            <DayPicker
+              mode="range"
+              selected={selected}
+              onSelect={handleSelect}
+              disabled={{ dayOfWeek: [0, 6] }}
+              numberOfMonths={2}
+              showOutsideDays={false}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function coverageColor(rate: number) {
@@ -516,27 +649,27 @@ interface StatsPanelProps {
 }
 
 function StatsPanel({ users, workflows, filterLocale, onFilterLocale, filterWorkflow, onFilterWorkflow, open, onToggle }: StatsPanelProps) {
-  const [range,   setRange]   = useState<StatsRange>('week')
-  const [dates,   setDates]   = useState<string[]>(() => getRangeDates('week'))
-  const [subs,    setSubs]    = useState<AvailabilitySubmission[]>([])
-  const [loading, setLoading] = useState(false)
+  const [dateRange, setDateRange] = useState<DateRangeValue>(currentWeekBounds)
+  const [subs,      setSubs]      = useState<AvailabilitySubmission[]>([])
+  const [loading,   setLoading]   = useState(false)
+
+  const workingDays = useMemo(() => getWorkingDays(dateRange.from, dateRange.to), [dateRange])
 
   useEffect(() => {
-    const ds = getRangeDates(range)
-    setDates(ds)
+    if (!dateRange.from || !dateRange.to) return
     setLoading(true)
-    const p = new URLSearchParams({ from: ds[0], to: ds[ds.length - 1] })
+    const p = new URLSearchParams({ from: dateRange.from, to: dateRange.to })
     fetch(`/api/availability?${p}`)
       .then(r => r.ok ? r.json() : [])
       .then(d => { setSubs(Array.isArray(d) ? d : []); setLoading(false) })
-  }, [range])
+  }, [dateRange])
 
   const rows = useMemo(
-    () => buildHeatRows(users, subs, dates, filterLocale, filterWorkflow),
-    [users, subs, dates, filterLocale, filterWorkflow],
+    () => buildHeatRows(users, subs, workingDays, filterLocale, filterWorkflow),
+    [users, subs, workingDays, filterLocale, filterWorkflow],
   )
 
-  const allCells: HeatCell[] = dates.map((date, i) => ({
+  const allCells: HeatCell[] = workingDays.map((date, i) => ({
     date,
     total:   rows.reduce((s, r) => s + r.cells[i].total, 0),
     avail:   rows.reduce((s, r) => s + r.cells[i].avail, 0),
@@ -552,9 +685,9 @@ function StatsPanel({ users, workflows, filterLocale, onFilterLocale, filterWork
     ? rows
     : [{ locale: '__all__', label: 'All', cells: allCells, totH, totA, totU, isAll: true }, ...rows]
 
-  // Group dates into week chunks for column headers
+  // Group working days into week chunks for column headers
   const weekChunks: string[][] = []
-  for (let i = 0; i < dates.length; i += 5) weekChunks.push(dates.slice(i, i + 5))
+  for (let i = 0; i < workingDays.length; i += 5) weekChunks.push(workingDays.slice(i, i + 5))
 
   const allLocales = [...new Set(users.map(u => u.locale).filter(Boolean) as string[])].sort()
 
@@ -565,7 +698,7 @@ function StatsPanel({ users, workflows, filterLocale, onFilterLocale, filterWork
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Team Coverage</span>
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${coverageColor(weekRate)}`}>
-            {Math.round(weekRate * 100)}% · {totH}h · {RANGE_LABELS[range].toLowerCase()}
+            {Math.round(weekRate * 100)}% · {totH}h · {rangeLabel(dateRange.from, dateRange.to)}
           </span>
         </div>
         <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -576,21 +709,10 @@ function StatsPanel({ users, workflows, filterLocale, onFilterLocale, filterWork
           {/* Controls */}
           <div className="flex items-start gap-3 px-5 py-3 border-b border-gray-50 flex-wrap">
 
-            {/* Range */}
+            {/* Range picker */}
             <div>
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Range</p>
-              <div className="flex gap-1">
-                {(['week', 'week-2', 'week-4'] as StatsRange[]).map(r => (
-                  <button key={r} onClick={() => setRange(r)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                      range === r ? 'bg-slate-800 text-white border-slate-800'
-                                  : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                    }`}
-                  >
-                    {RANGE_LABELS[r]}
-                  </button>
-                ))}
-              </div>
+              <DateRangePicker value={dateRange} onChange={setDateRange} />
             </div>
 
             <div className="w-px self-stretch bg-gray-100 hidden sm:block" />
@@ -674,7 +796,7 @@ function StatsPanel({ users, workflows, filterLocale, onFilterLocale, filterWork
                   {/* Day headers */}
                   <tr>
                     <th className="pr-4 pb-1 text-left font-medium text-gray-400 text-[10px] uppercase tracking-wide">Team</th>
-                    {dates.map((d, di) => (
+                    {workingDays.map((d, di) => (
                       <th key={d} className={`text-center pb-1 w-[46px] ${di > 0 && di % 5 === 0 ? 'pl-2' : ''}`}>
                         <p className="text-[10px] font-semibold text-gray-500">
                           {new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short' })}
