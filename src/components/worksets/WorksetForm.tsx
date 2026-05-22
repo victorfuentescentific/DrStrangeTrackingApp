@@ -78,7 +78,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
     } : DEFAULT,
   )
 
-  // UI-only: whether this workset is a back-to-back successor
+  // UI-only: whether this workset is a sequential (back-to-back) successor
   const [isBackToBack, setIsBackToBack] = useState(!!(initial?.predecessorId))
 
   const [etaSuggestion, setEtaSuggestion] = useState<ReturnType<typeof calculateETA> | null>(null)
@@ -106,7 +106,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
     }
   }, [form.locale, form.workflow])
 
-  // When predecessor is picked in back-to-back mode, mirror its workflow / locale / region
+  // When predecessor is picked in sequential mode, mirror its workflow / locale / region
   useEffect(() => {
     if (!isBackToBack || !form.predecessorId) return
     const pred = worksets.find(w => w.id === form.predecessorId)
@@ -188,7 +188,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
               )}
             >
               <span className="text-base leading-none">□</span>
-              Solo batch
+              Standalone
             </button>
             <button
               type="button"
@@ -201,7 +201,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
               )}
             >
               <Link2 className="w-3.5 h-3.5" />
-              Back-to-back
+              Sequential
             </button>
           </div>
           {isBackToBack && (
@@ -212,7 +212,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
         </div>
       )}
 
-      {/* Predecessor picker (back-to-back mode only) */}
+      {/* Predecessor picker (sequential mode only) */}
       {isBackToBack && !isEdit && (
         <div>
           <label className={labelClass}>Set 1 batch (predecessor) *</label>
@@ -391,7 +391,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
           <div className="flex items-center gap-2 mb-3">
             {isBackToBack ? <Link2 className="w-4 h-4 text-brand-500" /> : <Info className="w-4 h-4 text-brand-500" />}
             <span className="text-xs font-semibold text-slate-700">
-              {isBackToBack ? 'Set 2 Phase Timeline — back-to-back' : `Estimated Phase Timeline (${etaSuggestion.model} model)`}
+              {isBackToBack ? 'Set 2 Phase Timeline — sequential' : `Estimated Phase Timeline (${etaSuggestion.model} model)`}
             </span>
           </div>
 

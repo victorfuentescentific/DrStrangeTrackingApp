@@ -31,7 +31,7 @@ export default function NewWorksetPage() {
             onCancel={() => router.push('/worksets')}
             onSubmit={(form) => {
               const n = parseInt(form.teamSize) || 11
-              // For back-to-back worksets, linkSuccessor calculates phases; skip standalone calc
+              // For sequential worksets, linkSuccessor calculates phases; skip standalone calc
               const phases = !form.predecessorId && form.locale && form.startDate && n >= 5
                 ? calculateETA(form.workflow, form.locale, n, form.startDate)
                 : undefined
