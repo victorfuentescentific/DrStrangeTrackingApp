@@ -12,6 +12,8 @@ export interface UserSummary {
   workflow: string | null
 }
 
+// Reads from accounts_credentials — the single source of truth for user data.
+// Only returns Active users; inactive/offboarded are excluded from team views.
 export async function GET() {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE)?.value
@@ -20,12 +22,10 @@ export async function GET() {
   const session = await verifyToken(token)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Scope rules (server-enforced from JWT):
-  //   admin / lead → all users
-  //   fte / freelancer → only users in their own locale
   const baseQuery = db
-    .from('users')
-    .select('id, name, role, locale, employee_type, workflow')
+    .from('accounts_credentials')
+    .select('id, name, role, locale, resource_type, workflow')
+    .eq('status', 'Active')
 
   const scopedQuery =
     (session.role === 'fte' || session.role === 'freelancer') && session.locale
@@ -41,7 +41,7 @@ export async function GET() {
     name:         u.name,
     role:         u.role,
     locale:       u.locale ?? null,
-    employeeType: u.employee_type ?? null,
+    employeeType: u.resource_type ?? null,
     workflow:     u.workflow ?? null,
   }))
 

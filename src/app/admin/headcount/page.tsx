@@ -33,6 +33,13 @@ const RESOURCE_TYPE_COLORS: Record<string, string> = {
   Management: 'bg-purple-50 text-purple-700',
 }
 
+const ROLE_COLORS: Record<string, string> = {
+  admin:      'bg-purple-50 text-purple-700',
+  lead:       'bg-blue-50 text-blue-700',
+  fte:        'bg-green-50 text-green-700',
+  freelancer: 'bg-gray-50 text-gray-600',
+}
+
 const ONBOARDING_COLORS: Record<string, string> = {
   Onboarded:    'bg-green-100 text-green-700',
   Pending:      'bg-amber-100 text-amber-700',
@@ -75,6 +82,7 @@ export default function HeadcountOverviewPage() {
       }
       load()
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
   const load = useCallback(async () => {
@@ -130,7 +138,7 @@ export default function HeadcountOverviewPage() {
   const isAdmin = role === 'admin'
 
   return (
-    <AppLayout title="HC Overview" subtitle="Headcount tracker — Tier 1">
+    <AppLayout title="HC Overview" subtitle="Headcount tracker — Tier 1 · source of truth">
       <div className="px-4 py-6 space-y-5">
 
         {/* Top bar: counts + analytics link */}
@@ -147,7 +155,7 @@ export default function HeadcountOverviewPage() {
             <span className="text-[11px] text-slate-400 italic">(filtered)</span>
           )}
           <Link
-            href="/headcount/analytics"
+            href="/admin/headcount/analytics"
             className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
           >
             <BarChart3 className="w-4 h-4" />
@@ -246,6 +254,12 @@ export default function HeadcountOverviewPage() {
                           } else if (col.key === 'resourceType' && v) {
                             display = (
                               <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${RESOURCE_TYPE_COLORS[String(v)] ?? 'bg-slate-100 text-slate-600'}`}>
+                                {String(v)}
+                              </span>
+                            )
+                          } else if (col.key === 'role' && v) {
+                            display = (
+                              <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${ROLE_COLORS[String(v)] ?? 'bg-slate-100 text-slate-600'}`}>
                                 {String(v)}
                               </span>
                             )

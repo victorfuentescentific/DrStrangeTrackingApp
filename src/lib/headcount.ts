@@ -3,12 +3,8 @@ import { db } from './db'
 import seedData from './headcount-data.json'
 import { HeadcountRecord, HeadcountAnalytics, normalizeStatus } from './headcount-types'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Headcount source of truth lives in Supabase (`accounts_credentials` table).
-// The table is populated by the admin via CSV upload through the Supabase
-// Table Editor. The JSON file is kept around only as a dev-time fallback if
-// Supabase is unreachable.
-// ─────────────────────────────────────────────────────────────────────────────
+// accounts_credentials is the single source of truth for all user data.
+// The JSON file is kept only as a dev-time fallback if Supabase is unreachable.
 
 const SEED: HeadcountRecord[] = seedData as HeadcountRecord[]
 
@@ -18,6 +14,7 @@ const COL_MAP: Array<{ js: keyof HeadcountRecord; db: string }> = [
   { js: 'name',              db: 'name' },
   { js: 'locale',            db: 'locale' },
   { js: 'role',              db: 'role' },
+  { js: 'position',          db: 'position' },
   { js: 'workflow',          db: 'workflow' },
   { js: 'resourceType',      db: 'resource_type' },
   { js: 'onboardingStatus',  db: 'onboarding_status' },
@@ -59,8 +56,6 @@ function toDb(rec: Partial<HeadcountRecord>): Record<string, unknown> {
 export async function getAllHeadcount(): Promise<HeadcountRecord[]> {
   const { data, error } = await db.from('accounts_credentials').select('*').order('name')
   if (error || !data) {
-    // Supabase unavailable or table missing — fall back to JSON so the page
-    // still renders something useful in dev / first-deploy scenarios.
     return SEED
   }
   return data.map(fromDb)
@@ -145,6 +140,7 @@ export function computeAnalytics(records: HeadcountRecord[]): HeadcountAnalytics
     byWorkflow: {},
     byResourceType: {},
     byRole: {},
+    byPosition: {},
   }
 
   for (const r of records) {
@@ -166,6 +162,7 @@ export function computeAnalytics(records: HeadcountRecord[]): HeadcountAnalytics
     inc(result.byWorkflow, r.workflow)
     inc(result.byResourceType, r.resourceType)
     inc(result.byRole, r.role)
+    inc(result.byPosition, r.position)
   }
 
   return result

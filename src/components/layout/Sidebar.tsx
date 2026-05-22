@@ -26,7 +26,6 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { href: '/calendar',     label: 'Calendar',        icon: CalendarDays },
       { href: '/projections',  label: 'Projections',     icon: Calculator },
       { href: '/planner',      label: 'Planner',         icon: Kanban },
-      { href: '/headcount',    label: 'HC Overview',     icon: UserCog,        roles: ['admin', 'lead'] },
     ],
   },
   {
@@ -48,9 +47,9 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Admin',
     items: [
-      { href: '/admin/submissions', label: 'Hours Submissions', icon: ShieldCheck, roles: ['admin'] },
-      { href: '/admin/users',       label: 'Users',             icon: Users,       roles: ['admin'] },
-      { href: '/notes',             label: 'Notes & Links',     icon: NotebookPen, roles: ['admin'] },
+      { href: '/admin/headcount',    label: 'HC Overview',        icon: UserCog,    roles: ['admin', 'lead'] },
+      { href: '/admin/submissions',  label: 'Hours Submissions',  icon: ShieldCheck, roles: ['admin'] },
+      { href: '/notes',              label: 'Notes & Links',      icon: NotebookPen, roles: ['admin'] },
     ],
   },
 ]
@@ -60,7 +59,6 @@ export function Sidebar() {
   const { user } = useSession()
   const role = user?.role
 
-  // Filter nav sections by role; items without `roles` are visible to everyone.
   const visibleSections = NAV_SECTIONS.map(section => ({
     ...section,
     items: section.items.filter(item => !item.roles || (role && item.roles.includes(role))),

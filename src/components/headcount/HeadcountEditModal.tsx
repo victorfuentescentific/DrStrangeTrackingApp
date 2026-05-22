@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Check, Loader2, AlertTriangle } from 'lucide-react'
+import { X, Check, Loader2, AlertTriangle, KeyRound } from 'lucide-react'
 import { HeadcountRecord } from '@/lib/headcount-types'
 
 interface HeadcountEditModalProps {
@@ -24,9 +24,10 @@ const GROUPS: Array<{
   {
     label: 'Identity',
     fields: [
-      { key: 'name',         label: 'Name',              type: 'text',  cols: 2 },
+      { key: 'name',         label: 'Name',              type: 'text',   cols: 2 },
       { key: 'locale',       label: 'Locale',            type: 'select', options: ['en_GB','de_DE','nl_NL','fr_FR','da_DK','nb_NO','fi_FI','sv_SE','no_NO','dk_DK','N/A'] },
-      { key: 'role',         label: 'Role',              type: 'select', options: ['Annotator','SME','Language Lead','Management'] },
+      { key: 'role',         label: 'Access Role',       type: 'select', options: ['admin','lead','fte','freelancer'] },
+      { key: 'position',     label: 'Position (Job Title)', type: 'select', options: ['Annotator','SME','Language Lead','Management','N/A'] },
       { key: 'workflow',     label: 'Workflow',          type: 'select', options: ['Transcriber','Scriber','Lead','N/A'] },
       { key: 'resourceType', label: 'Resource Type',     type: 'select', options: ['FTE','Freelancer','Management'] },
     ],
@@ -44,11 +45,11 @@ const GROUPS: Array<{
   {
     label: 'Contact',
     fields: [
-      { key: 'centificEmail',   label: 'Centific Email',  type: 'email' },
-      { key: 'personalEmail',   label: 'Personal Email',  type: 'email' },
-      { key: 'vMicrosoftEmail', label: 'MS Email',        type: 'email' },
-      { key: 'phoneNumber',     label: 'Phone Number',    type: 'text' },
-      { key: 'shippingAddress', label: 'Shipping Address', type: 'textarea', cols: 2 },
+      { key: 'centificEmail',   label: 'Centific Email (login)', type: 'email' },
+      { key: 'personalEmail',   label: 'Personal Email',         type: 'email' },
+      { key: 'vMicrosoftEmail', label: 'MS Email',               type: 'email' },
+      { key: 'phoneNumber',     label: 'Phone Number',           type: 'text' },
+      { key: 'shippingAddress', label: 'Shipping Address',       type: 'textarea', cols: 2 },
     ],
   },
   {
@@ -70,11 +71,14 @@ const GROUPS: Array<{
 ]
 
 export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditModalProps) {
-  const [form,    setForm]    = useState<HeadcountRecord>(record)
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
+  const [form,        setForm]        = useState<HeadcountRecord>(record)
+  const [saving,      setSaving]      = useState(false)
+  const [error,       setError]       = useState<string | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [resetting,   setResetting]   = useState(false)
+  const [resetMsg,    setResetMsg]    = useState<string | null>(null)
+  const [resetError,  setResetError]  = useState<string | null>(null)
 
-  // Escape to close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -88,7 +92,6 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
   async function save() {
     setSaving(true); setError(null)
 
-    // Build patch of fields that actually changed
     const patch: Partial<HeadcountRecord> = {}
     for (const group of GROUPS) {
       for (const f of group.fields) {
@@ -112,21 +115,39 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        const msg = data.error ?? `Save failed — HTTP ${res.status}`
-        console.error('[HeadcountEditModal] save failed:', { status: res.status, body: data })
-        setError(msg)
+        setError(data.error ?? `Save failed — HTTP ${res.status}`)
         return
       }
 
       const data = await res.json()
-      console.log('[HeadcountEditModal] save ok:', data.record?.id)
       onSaved(data.record)
       onClose()
     } catch (err) {
       setSaving(false)
-      const msg = err instanceof Error ? err.message : 'Network error — could not reach the server.'
-      console.error('[HeadcountEditModal] network error:', err)
-      setError(msg)
+      setError(err instanceof Error ? err.message : 'Network error — could not reach the server.')
+    }
+  }
+
+  async function resetPassword() {
+    if (newPassword.length < 8) return
+    setResetting(true); setResetMsg(null); setResetError(null)
+    try {
+      const res = await fetch('/api/admin/headcount/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: record.id, password: newPassword }),
+      })
+      setResetting(false)
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setResetError(d.error ?? `Reset failed — HTTP ${res.status}`)
+        return
+      }
+      setNewPassword('')
+      setResetMsg('Password reset successfully.')
+    } catch (err) {
+      setResetting(false)
+      setResetError(err instanceof Error ? err.message : 'Network error')
     }
   }
 
@@ -154,12 +175,10 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
               <div className="flex-1">
                 <p className="text-sm font-semibold text-red-800">Save failed</p>
                 <p className="text-xs text-red-700 mt-0.5 font-mono break-all">{error}</p>
-                <p className="text-[11px] text-red-600 mt-1">
-                  Open browser DevTools → Console for full details.
-                </p>
               </div>
             </div>
           )}
+
           {GROUPS.map(group => (
             <section key={group.label}>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
@@ -215,6 +234,39 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
               </div>
             </section>
           ))}
+
+          {/* Portal Access — password reset */}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3 flex items-center gap-1.5">
+              <KeyRound className="w-3.5 h-3.5" />
+              Portal Access
+            </h3>
+            <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+              <p className="text-xs text-slate-500 mb-3">
+                Reset this user&apos;s portal login password. They log in with their centific email.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  placeholder="New password (min. 8 characters)"
+                  value={newPassword}
+                  onChange={e => { setNewPassword(e.target.value); setResetMsg(null); setResetError(null) }}
+                  className="flex-1 text-sm rounded-lg border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={resetPassword}
+                  disabled={resetting || newPassword.length < 8}
+                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-40 transition-colors inline-flex items-center gap-1.5"
+                >
+                  {resetting
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Resetting…</>
+                    : 'Reset password'}
+                </button>
+              </div>
+              {resetMsg   && <p className="text-xs mt-2 text-green-700">{resetMsg}</p>}
+              {resetError && <p className="text-xs mt-2 text-red-600">{resetError}</p>}
+            </div>
+          </section>
         </div>
 
         {/* Footer */}

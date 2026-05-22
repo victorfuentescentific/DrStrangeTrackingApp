@@ -1,14 +1,17 @@
 // Headcount tracker types — sourced from "Main Tracker Dr.Strange Tier 1"
 // PII-bearing record; access restricted to admin + lead roles via API.
+// accounts_credentials is the single source of truth for all user data.
 
 export type HeadcountStatus = 'Active' | 'Inactive' | 'Offboarded'
 export type HeadcountResourceType = 'FTE' | 'Freelancer' | 'Management'
+export type AccessRole = 'admin' | 'lead' | 'fte' | 'freelancer'
 
 export interface HeadcountRecord {
   id: string
   name: string
   locale: string | null
-  role: string | null
+  role: string | null          // access level: admin | lead | fte | freelancer
+  position: string | null      // job title: Annotator, SME, Language Lead, Management
   workflow: string | null
   resourceType: string | null
   onboardingStatus: string | null
@@ -38,12 +41,14 @@ export interface HeadcountAnalytics {
   byWorkflow: Record<string, { active: number; inactive: number; offboarded: number; total: number }>
   byResourceType: Record<string, { active: number; inactive: number; offboarded: number; total: number }>
   byRole: Record<string, { active: number; inactive: number; offboarded: number; total: number }>
+  byPosition: Record<string, { active: number; inactive: number; offboarded: number; total: number }>
 }
 
 export const ALL_HC_COLUMNS: { key: keyof HeadcountRecord; label: string; width?: string }[] = [
   { key: 'name',             label: 'Name',             width: 'w-44' },
   { key: 'locale',           label: 'Locale',           width: 'w-20' },
-  { key: 'role',             label: 'Role',             width: 'w-28' },
+  { key: 'role',             label: 'Access Role',      width: 'w-28' },
+  { key: 'position',         label: 'Position',         width: 'w-28' },
   { key: 'workflow',         label: 'Workflow',         width: 'w-28' },
   { key: 'resourceType',     label: 'Resource Type',    width: 'w-28' },
   { key: 'status',           label: 'Status',           width: 'w-24' },

@@ -60,7 +60,6 @@ export default function HeadcountAnalyticsPage() {
     setLoading(false)
   }, [locales, workflows, resourceTypes, statuses])
 
-  // Re-fetch when filters change (unless denied)
   useEffect(() => {
     if (denied) return
     load()
@@ -81,12 +80,12 @@ export default function HeadcountAnalyticsPage() {
   const anyFilter = locales.length + workflows.length + resourceTypes.length + statuses.length > 0
 
   return (
-    <AppLayout title="HC Analytics" subtitle="Breakdown by locale, workflow, resource type, and status">
+    <AppLayout title="HC Analytics" subtitle="Breakdown by locale, workflow, resource type, and role">
       <div className="px-4 py-6 space-y-5">
 
         {/* Back link */}
         <Link
-          href="/headcount"
+          href="/admin/headcount"
           className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -95,9 +94,9 @@ export default function HeadcountAnalyticsPage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <SummaryCard icon={<Users      className="w-4 h-4" />} color="slate"  label="Total in scope" value={a?.total    ?? 0} />
-          <SummaryCard icon={<UserCheck  className="w-4 h-4" />} color="green"  label="Active"         value={a?.active   ?? 0} />
-          <SummaryCard icon={<UserMinus  className="w-4 h-4" />} color="amber"  label="Inactive"       value={a?.inactive ?? 0} />
+          <SummaryCard icon={<Users      className="w-4 h-4" />} color="slate"  label="Total in scope" value={a?.total      ?? 0} />
+          <SummaryCard icon={<UserCheck  className="w-4 h-4" />} color="green"  label="Active"         value={a?.active     ?? 0} />
+          <SummaryCard icon={<UserMinus  className="w-4 h-4" />} color="amber"  label="Inactive"       value={a?.inactive   ?? 0} />
           <SummaryCard icon={<UserX      className="w-4 h-4" />} color="slate"  label="Offboarded"     value={a?.offboarded ?? 0} />
         </div>
 
@@ -124,8 +123,9 @@ export default function HeadcountAnalyticsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <BreakdownCard title="By Locale"        data={a.byLocale}        />
             <BreakdownCard title="By Workflow"      data={a.byWorkflow}      />
-            <BreakdownCard title="By Resource Type" data={a.byResourceType} />
-            <BreakdownCard title="By Role"          data={a.byRole}          />
+            <BreakdownCard title="By Resource Type" data={a.byResourceType}  />
+            <BreakdownCard title="By Access Role"   data={a.byRole}          />
+            <BreakdownCard title="By Position"      data={a.byPosition}      />
           </div>
         )}
 
