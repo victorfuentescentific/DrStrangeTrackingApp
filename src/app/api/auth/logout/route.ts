@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
+import { COOKIE } from '@/lib/auth'
 
 export async function POST() {
   const response = NextResponse.json({ ok: true })
-  response.cookies.set('wpm-session', '', {
+  response.cookies.set(COOKIE, '', {
     httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: 0,
     sameSite: 'lax',

@@ -43,9 +43,11 @@ export async function validatePassword(user: StoredUser, password: string): Prom
 
 export async function updatePassword(id: string, newPassword: string): Promise<boolean> {
   const hash = await bcrypt.hash(newPassword, 10)
-  const { error } = await db
+  const { data, error } = await db
     .from('Account credentials')
     .update({ password_hash: hash })
     .eq('id', id)
-  return !error
+    .select('id')
+    .single()
+  return !error && !!data
 }

@@ -45,7 +45,13 @@ export async function GET(req: NextRequest) {
     search:       sp.get('search') || undefined,
   }
 
-  const all      = await getAllHeadcount()
+  let all: Awaited<ReturnType<typeof getAllHeadcount>>
+  try {
+    all = await getAllHeadcount()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: msg }, { status: 503 })
+  }
   const filtered = filterHeadcount(all, filters)
 
   const payload: Record<string, unknown> = {
@@ -83,6 +89,17 @@ export async function PATCH(req: NextRequest) {
 
   // Disallow id mutation explicitly
   if ('id' in body.patch) delete (body.patch as Record<string, unknown>).id
+
+  // Validate status if provided
+  const validStatuses = ['Active', 'Inactive', 'Offboarded']
+  if (body.patch.status && !validStatuses.includes(body.patch.status)) {
+    return NextResponse.json({ error: 'Invalid status value' }, { status: 422 })
+  }
+
+  // Normalize centific email if provided
+  if (body.patch.centificEmail) {
+    body.patch.centificEmail = body.patch.centificEmail.trim().toLowerCase()
+  }
 
   const result = await updateHeadcount(body.id, body.patch, session.email)
   if (!result.ok) {

@@ -1,8 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose'
 
-const SECRET = new TextEncoder().encode(
-  process.env.AUTH_SECRET ?? 'dev-secret-change-in-production'
-)
+if (!process.env.AUTH_SECRET) throw new Error('Missing AUTH_SECRET environment variable.')
+const SECRET = new TextEncoder().encode(process.env.AUTH_SECRET)
 const COOKIE = 'wpm-session'
 const TTL = 60 * 60 * 8 // 8 hours
 
@@ -39,10 +38,6 @@ export async function verifyToken(token: string): Promise<SessionUser | null> {
   } catch {
     return null
   }
-}
-
-export function getSessionCookie(value: string, maxAge: number): string {
-  return `${COOKIE}=${value}; HttpOnly; Path=/; Max-Age=${maxAge}; SameSite=Lax`
 }
 
 export { COOKIE }

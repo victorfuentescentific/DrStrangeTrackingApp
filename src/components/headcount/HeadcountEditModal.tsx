@@ -25,7 +25,7 @@ const GROUPS: Array<{
     label: 'Identity',
     fields: [
       { key: 'name',         label: 'Name',              type: 'text',   cols: 2 },
-      { key: 'locale',       label: 'Locale',            type: 'select', options: ['en_GB','de_DE','nl_NL','fr_FR','da_DK','nb_NO','fi_FI','sv_SE','no_NO','dk_DK','N/A'] },
+      { key: 'locale',       label: 'Locale',            type: 'select', options: ['en_GB','de_DE','nl_NL','fr_FR','da_DK','nb_NO','fi_FI','sv_SE','N/A'] },
       { key: 'role',         label: 'Access Role',       type: 'select', options: ['admin','lead','fte','freelancer'] },
       { key: 'position',     label: 'Position (Job Title)', type: 'select', options: ['Annotator','SME','Language Lead','Management','N/A'] },
       { key: 'workflow',     label: 'Workflow',          type: 'select', options: ['Transcriber','Scriber','Lead','N/A'] },
@@ -74,10 +74,13 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
   const [form,        setForm]        = useState<HeadcountRecord>(record)
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState<string | null>(null)
-  const [newPassword, setNewPassword] = useState('')
-  const [resetting,   setResetting]   = useState(false)
-  const [resetMsg,    setResetMsg]    = useState<string | null>(null)
-  const [resetError,  setResetError]  = useState<string | null>(null)
+  const [newPassword,   setNewPassword]   = useState('')
+  const [resetting,     setResetting]     = useState(false)
+  const [resetMsg,      setResetMsg]      = useState<string | null>(null)
+  const [resetError,    setResetError]    = useState<string | null>(null)
+  const [confirmReset,  setConfirmReset]  = useState(false)
+
+  const emailChanged = form.centificEmail !== record.centificEmail
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -87,10 +90,20 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
 
   function update<K extends keyof HeadcountRecord>(key: K, val: HeadcountRecord[K]) {
     setForm(f => ({ ...f, [key]: val }))
+    setConfirmReset(false) // reset confirm state on any field change
   }
 
   async function save() {
-    setSaving(true); setError(null)
+    setError(null)
+
+    // Validate centific email format if it was changed
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (emailChanged && form.centificEmail && !emailRe.test(form.centificEmail)) {
+      setError('Centific Email is not a valid email address. Fix it before saving to avoid locking the user out.')
+      return
+    }
+
+    setSaving(true)
 
     const patch: Partial<HeadcountRecord> = {}
     for (const group of GROUPS) {
@@ -130,6 +143,8 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
 
   async function resetPassword() {
     if (newPassword.length < 8) return
+    if (!confirmReset) { setConfirmReset(true); return }
+    setConfirmReset(false)
     setResetting(true); setResetMsg(null); setResetError(null)
     try {
       const res = await fetch('/api/admin/headcount/reset-password', {
@@ -175,6 +190,20 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
               <div className="flex-1">
                 <p className="text-sm font-semibold text-red-800">Save failed</p>
                 <p className="text-xs text-red-700 mt-0.5 font-mono break-all">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {emailChanged && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-800">Login email changed</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Saving will update <strong>{record.name}</strong>&apos;s login email
+                  from <span className="font-mono">{record.centificEmail ?? '—'}</span> to <span className="font-mono">{form.centificEmail ?? '—'}</span>.
+                  A typo will lock them out immediately.
+                </p>
               </div>
             </div>
           )}
@@ -250,19 +279,26 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
                   type="password"
                   placeholder="New password (min. 8 characters)"
                   value={newPassword}
-                  onChange={e => { setNewPassword(e.target.value); setResetMsg(null); setResetError(null) }}
+                  onChange={e => { setNewPassword(e.target.value); setResetMsg(null); setResetError(null); setConfirmReset(false) }}
                   className="flex-1 text-sm rounded-lg border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button
                   onClick={resetPassword}
                   disabled={resetting || newPassword.length < 8}
-                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-40 transition-colors inline-flex items-center gap-1.5"
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg text-white disabled:opacity-40 transition-colors inline-flex items-center gap-1.5 ${
+                    confirmReset ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-700 hover:bg-slate-800'
+                  }`}
                 >
                   {resetting
                     ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Resetting…</>
-                    : 'Reset password'}
+                    : confirmReset ? 'Confirm reset' : 'Reset password'}
                 </button>
               </div>
+              {confirmReset && (
+                <p className="text-xs mt-2 text-amber-700 font-medium">
+                  ⚠ This will immediately change {record.name}&apos;s login password. Click &quot;Confirm reset&quot; to proceed.
+                </p>
+              )}
               {resetMsg   && <p className="text-xs mt-2 text-green-700">{resetMsg}</p>}
               {resetError && <p className="text-xs mt-2 text-red-600">{resetError}</p>}
             </div>

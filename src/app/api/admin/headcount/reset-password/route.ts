@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { verifyToken, COOKIE } from '@/lib/auth'
 import { updatePassword } from '@/lib/users'
+import { createRateLimiter } from '@/lib/rate-limit'
+
+// 10 resets per admin per hour — prevents bulk-reset if an admin account is compromised
+const resetLimiter = createRateLimiter({ max: 10, windowMs: 60 * 60 * 1000 })
 
 async function getSession() {
   const cookieStore = await cookies()
@@ -15,6 +19,15 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.role !== 'admin') {
     return NextResponse.json({ error: 'Admin role required' }, { status: 403 })
+  }
+
+  // Rate limit by admin user ID — not IP, since admins are on trusted networks
+  const limit = resetLimiter.check(session.id)
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many password resets. Limit resets in 1 hour.' },
+      { status: 429 },
+    )
   }
 
   let body: { id?: string; password?: string }

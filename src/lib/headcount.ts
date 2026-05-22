@@ -8,7 +8,9 @@ import { HeadcountRecord, HeadcountAnalytics, normalizeStatus } from './headcoun
 
 const SEED: HeadcountRecord[] = seedData as HeadcountRecord[]
 
-// camelCase ↔ snake_case mapping (the only place this lives)
+// camelCase ↔ snake_case mapping (the only place this lives).
+// password_hash and last_updated_by are intentionally excluded — they must never
+// be sent to the client. last_updated_by is written by updateHeadcount() directly.
 const COL_MAP: Array<{ js: keyof HeadcountRecord; db: string }> = [
   { js: 'id',                db: 'id' },
   { js: 'name',              db: 'name' },
@@ -35,6 +37,10 @@ const COL_MAP: Array<{ js: keyof HeadcountRecord; db: string }> = [
   { js: 'remarks',           db: 'remarks' },
 ]
 
+// Derived from COL_MAP — single source of truth for which columns to fetch.
+// Excludes password_hash and last_updated_by (server-only fields).
+const SELECT_COLS = COL_MAP.map(e => e.db).join(', ')
+
 function fromDb(row: Record<string, unknown>): HeadcountRecord {
   const rec = {} as Record<keyof HeadcountRecord, unknown>
   for (const { js, db } of COL_MAP) {
@@ -54,11 +60,15 @@ function toDb(rec: Partial<HeadcountRecord>): Record<string, unknown> {
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 export async function getAllHeadcount(): Promise<HeadcountRecord[]> {
-  const { data, error } = await db.from('Account credentials').select('*').order('name')
-  if (error || !data) {
-    return SEED
+  const { data, error } = await db
+    .from('Account credentials')
+    .select(SELECT_COLS)
+    .order('name')
+  if (error) {
+    console.error('getAllHeadcount Supabase error:', error.message)
+    throw new Error(`Failed to load headcount data: ${error.message}`)
   }
-  return data.map(fromDb)
+  return (data ?? []).map(row => fromDb(row as unknown as Record<string, unknown>))
 }
 
 export interface UpdateResult {
@@ -72,13 +82,13 @@ export async function updateHeadcount(
   patch: Partial<Omit<HeadcountRecord, 'id'>>,
   updatedBy: string,
 ): Promise<UpdateResult> {
-  const row = toDb(patch)
+  const row = { ...toDb(patch), last_updated_by: updatedBy }
 
   const { data, error } = await db
     .from('Account credentials')
     .update(row)
     .eq('id', id)
-    .select()
+    .select(SELECT_COLS)
     .single()
 
   if (error) {
@@ -88,7 +98,7 @@ export async function updateHeadcount(
   if (!data) {
     return { ok: false, error: `No record with id "${id}" found in accounts_credentials.` }
   }
-  return { ok: true, record: fromDb(data) }
+  return { ok: true, record: fromDb(data as unknown as Record<string, unknown>) }
 }
 
 // ─── Filtering / analytics ──────────────────────────────────────────────────
