@@ -23,7 +23,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const baseQuery = db
-    .from('accounts_credentials')
+    .from('Account credentials')
     .select('id, name, role, locale, resource_type, workflow')
     .eq('status', 'Active')
 

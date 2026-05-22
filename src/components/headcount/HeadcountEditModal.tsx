@@ -272,7 +272,7 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50 rounded-b-2xl">
           <p className="text-xs text-slate-400">
-            Saves to <code className="px-1 py-0.5 rounded bg-slate-200 text-slate-600 text-[11px]">accounts_credentials</code> in Supabase.
+            Saves to <code className="px-1 py-0.5 rounded bg-slate-200 text-slate-600 text-[11px]">Account credentials</code> in Supabase.
           </p>
           <div className="flex items-center gap-2 ml-auto">
             <button

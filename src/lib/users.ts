@@ -18,7 +18,7 @@ export interface StoredUser {
 
 export async function findUserByEmail(email: string): Promise<StoredUser | undefined> {
   const { data, error } = await db
-    .from('accounts_credentials')
+    .from('Account credentials')
     .select('id, name, centific_email, role, locale, resource_type, workflow, password_hash')
     .ilike('centific_email', email)
     .maybeSingle()
@@ -44,8 +44,8 @@ export async function validatePassword(user: StoredUser, password: string): Prom
 export async function updatePassword(id: string, newPassword: string): Promise<boolean> {
   const hash = await bcrypt.hash(newPassword, 10)
   const { error } = await db
-    .from('accounts_credentials')
-    .update({ password_hash: hash, updated_at: new Date().toISOString() })
+    .from('Account credentials')
+    .update({ password_hash: hash })
     .eq('id', id)
   return !error
 }

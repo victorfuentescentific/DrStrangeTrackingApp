@@ -54,7 +54,7 @@ function toDb(rec: Partial<HeadcountRecord>): Record<string, unknown> {
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 export async function getAllHeadcount(): Promise<HeadcountRecord[]> {
-  const { data, error } = await db.from('accounts_credentials').select('*').order('name')
+  const { data, error } = await db.from('Account credentials').select('*').order('name')
   if (error || !data) {
     return SEED
   }
@@ -73,11 +73,9 @@ export async function updateHeadcount(
   updatedBy: string,
 ): Promise<UpdateResult> {
   const row = toDb(patch)
-  row['updated_at'] = new Date().toISOString()
-  row['updated_by'] = updatedBy
 
   const { data, error } = await db
-    .from('accounts_credentials')
+    .from('Account credentials')
     .update(row)
     .eq('id', id)
     .select()
