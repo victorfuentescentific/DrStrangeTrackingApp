@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, ListChecks, Kanban, BarChart3, Bot,
+  LayoutDashboard, ListChecks, Kanban, BarChart3,
   Settings, ChevronRight, CalendarDays, Calculator, Clock,
   CalendarCheck, Users, Plane, ShieldCheck, UserCog, NotebookPen,
 } from 'lucide-react'
@@ -41,7 +41,6 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: '/admin/hours',  label: 'Team Hours',      icon: Clock },
       { href: '/reports',      label: 'Reports',         icon: BarChart3 },
-      { href: '/claude',       label: 'Claude AI',       icon: Bot },
     ],
   },
   {

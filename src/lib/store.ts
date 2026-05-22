@@ -2,13 +2,12 @@
 
 import { create } from 'zustand'
 import {
-  Workset, Notification, FilterState, User, ClaudeCommand, ClaudeCommandResult,
+  Workset, Notification, FilterState, User,
   WorksetStatus,
 } from './types'
 import { MOCK_WORKSETS, MOCK_USERS } from './mock-data'
 import { generateId, generateWorksetId, daysUntil } from './utils'
 import { runNotificationEngine } from './notification-engine'
-import { processClaudeCommand as simulateClaudeCommand } from './claude-simulator'
 import { WorkflowType, Region } from './types'
 import { calculateSuccessorETA, addWorkingDays, getSuccessorStartDate } from './eta-calculator'
 
@@ -35,7 +34,6 @@ interface AppStore {
   markAllNotificationsRead: () => void
   toggleNotificationPanel: () => void
   refreshNotifications: () => void
-  processClaudeCommand: (command: ClaudeCommand) => ClaudeCommandResult
   linkSuccessor:   (set1Id: string, set2Id: string) => void
   unlinkSuccessor: (worksetId: string) => void
 
@@ -299,10 +297,6 @@ export const useStore = create<AppStore>()(
       refreshNotifications: () => {
         const notifications = runNotificationEngine(get().worksets)
         set({ notifications })
-      },
-
-      processClaudeCommand: (command) => {
-        return simulateClaudeCommand(command, get().worksets)
       },
 
       getFilteredWorksets: () => {
