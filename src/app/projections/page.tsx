@@ -12,15 +12,15 @@ import { cn } from '@/lib/utils'
 const TABS = [
   { id: 'weekly',     label: 'Weekly projections' },
   { id: 'calculator', label: 'Production calculator' },
-  { id: 'history',    label: 'History' },
+  { id: 'history',    label: 'Production calculator log' },
   { id: 'actuals',    label: 'vs Actuals' },
 ] as const
 type Tab = typeof TABS[number]['id']
 
 const SUBTITLES: Record<Tab, string> = {
-  weekly:     'Estimated production output by phase, locale, and headcount for the current week',
+  weekly:     'Visual dashboard of saved calculator projections grouped by locale and workflow',
   calculator: 'Calculate 1P output from available hours after subtracting IAA, 2Pass, and PHI',
-  history:    'Weekly projection snapshots captured every Monday — track output trends over time',
+  history:    'Full record of every calculation saved in the Production Calculator',
   actuals:    'Compare projected output against real production numbers entered by your team',
 }
 

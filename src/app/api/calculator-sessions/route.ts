@@ -50,7 +50,7 @@ export async function GET() {
     .select('*')
     .eq('user_id', session.id)
     .order('created_at', { ascending: false })
-    .limit(20)
+    .limit(50)
 
   if (error) {
     // Table may not exist yet — return empty array gracefully
