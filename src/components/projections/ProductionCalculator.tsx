@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { Calculator, ChevronDown, Shield, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { WorkflowType } from '@/lib/types'
+import { get1PRate } from '@/lib/eta-calculator'
 
 // 2Pass team size by locale — practical override (different from ETA model which always uses 4)
 const P2_HC: Record<string, number> = {
@@ -19,17 +20,8 @@ const LOCALES = ['en_GB', 'de_DE', 'nl_NL', 'fr_FR', 'da_DK', 'nb_NO', 'fi_FI', 
 const WORKFLOWS: WorkflowType[] = ['DAX', 'DMO', 'Scribing']
 const HOURS_PER_DAY = 8
 
-function getHourlyRate(workflow: WorkflowType, locale: string): number {
-  if (workflow === 'DAX') return 27 / HOURS_PER_DAY
-  if (workflow === 'DMO') return 25 / HOURS_PER_DAY
-  return (locale === 'fr_FR' ? 4 : 6) / HOURS_PER_DAY
-}
-
-function getDailyRate(workflow: WorkflowType, locale: string): number {
-  if (workflow === 'DAX') return 27
-  if (workflow === 'DMO') return 25
-  return locale === 'fr_FR' ? 4 : 6
-}
+// get1PRate imported from eta-calculator — single source of truth for 1P rates.
+// getDailyRate = get1PRate; getHourlyRate = get1PRate / HOURS_PER_DAY.
 
 function getUnit(workflow: WorkflowType): string {
   return workflow === 'Scribing' ? 'rep' : 'min audio'
@@ -194,7 +186,7 @@ export function ProductionCalculator() {
     const phiHours  = hc   * HOURS_PER_DAY * phiDays
     const consumed  = iaaHours + p2Hours + phiHours
     const remaining = Math.max(0, totalHours - consumed)
-    const rate      = getHourlyRate(workflow, locale)
+    const rate      = get1PRate(workflow, locale) / HOURS_PER_DAY
     const output    = remaining * rate
     const perPerson = hc > 0 ? output / hc : 0
     return { iaaHours, p2Hours, phiHours, consumed, remaining, output, perPerson }
@@ -202,7 +194,7 @@ export function ProductionCalculator() {
 
   const unit     = getUnit(workflow)
   const shortage = calc.consumed > totalHours
-  const daily    = getDailyRate(workflow, locale)
+  const daily    = get1PRate(workflow, locale)
   const rateLabel = `Rate: ${daily} ${unit}/p/day · 2Pass team: ${p2Hc} (${locale})`
 
   return (

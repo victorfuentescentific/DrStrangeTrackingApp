@@ -6,7 +6,7 @@ import { WeeklyProjections } from '@/components/projections/WeeklyProjections'
 import { ProductionCalculator } from '@/components/projections/ProductionCalculator'
 import { ProjectionHistory } from '@/components/projections/ProjectionHistory'
 import { ProjectionActuals } from '@/components/projections/ProjectionActuals'
-import { useStore } from '@/lib/store'
+import { useSession } from '@/hooks/useSession'
 import { cn } from '@/lib/utils'
 
 const TABS = [
@@ -26,9 +26,9 @@ const SUBTITLES: Record<Tab, string> = {
 
 export default function ProjectionsPage() {
   const [tab, setTab] = useState<Tab>('weekly')
-  const { currentUser } = useStore()
-  const isAdmin  = currentUser.role === 'admin'
-  const canEdit  = isAdmin || currentUser.role === 'lead'
+  const { user } = useSession()
+  const isAdmin = user?.role === 'admin'
+  const canEdit = isAdmin || user?.role === 'lead'
 
   return (
     <AppLayout title="Projections" subtitle={SUBTITLES[tab]}>

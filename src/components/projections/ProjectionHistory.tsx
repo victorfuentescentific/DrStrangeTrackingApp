@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Fragment } from 'react'
 import { format } from 'date-fns'
 import { History, ChevronDown, ChevronUp, RefreshCw, TrendingUp, Loader2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -228,9 +228,8 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
                 const prev = summaries[i + 1]
                 const isOpen = expanded === s.id
                 return (
-                  <>
+                  <Fragment key={s.id}>
                     <tr
-                      key={s.id}
                       onClick={() => toggleExpand(s.id)}
                       className="cursor-pointer hover:bg-slate-50 transition-colors"
                     >
@@ -270,7 +269,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>
