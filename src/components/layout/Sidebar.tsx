@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, ListChecks, Kanban, BarChart3,
   Settings, ChevronRight, CalendarDays, Calculator, Clock,
-  CalendarCheck, Users, Plane, ShieldCheck, UserCog, NotebookPen,
+  CalendarCheck, Users, Plane, ShieldCheck, UserCog, NotebookPen, Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/hooks/useSession'
@@ -41,6 +41,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: '/admin/hours',  label: 'Team Hours',      icon: Clock },
       { href: '/reports',      label: 'Reports',         icon: BarChart3 },
+      { href: '/ai',           label: 'AI Assistant',    icon: Sparkles,   roles: ['admin', 'lead'] },
     ],
   },
   {

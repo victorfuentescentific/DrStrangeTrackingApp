@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Sparkles, Send, Loader2, AlertTriangle, User, Bot, Zap,
   Users, BookOpenCheck, CalendarClock, ListTodo, RefreshCw,
+  AlertOctagon, Shield,
 } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 
@@ -19,7 +20,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Role = 'user' | 'assistant'
-type ContextSlice = 'headcount' | 'none'
+type ContextSlice = 'headcount' | 'worksets' | 'none'
 
 interface Message {
   id: string
@@ -61,6 +62,18 @@ const QUICK_ACTIONS: QuickAction[] = [
     prompt: 'Draft a concise weekly status update for leadership based on the current headcount snapshot. Cover: total active team size, locale coverage, resource-type mix, and any notable onboarding or offboarding trends. Keep it under 150 words, executive tone.',
     contextSlice: 'headcount',
   },
+  {
+    label: 'Workset risk & blockers',
+    icon: AlertOctagon,
+    prompt: 'Review the active worksets. Which are overdue or blocked? Summarize the top risks and suggest immediate PM actions. Group by severity.',
+    contextSlice: 'worksets',
+  },
+  {
+    label: 'Project status overview',
+    icon: Shield,
+    prompt: 'Give me a quick project health overview: how many worksets are on track vs at risk vs overdue? What workflows and locales are most affected? Keep it under 200 words.',
+    contextSlice: 'worksets',
+  },
 ]
 
 export default function AIAssistantPage() {
@@ -70,7 +83,9 @@ export default function AIAssistantPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [reqCount, setReqCount] = useState(0)   // tracked client-side (approx)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const MAX_REQ = 20
 
   // Auth gate — admin + lead only (matches the API route gate).
   useEffect(() => {
@@ -127,6 +142,7 @@ export default function AIAssistantPage() {
           model: data.model,
         }
         setMessages(m => [...m, aiMsg])
+        setReqCount(c => c + 1)
       }
     } catch (err) {
       setError(`Network error: ${(err as Error).message}`)
@@ -157,11 +173,17 @@ export default function AIAssistantPage() {
         {/* Banner — data-handling notice */}
         <div className="mb-4 flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
           <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-          <div className="text-xs text-amber-900 leading-relaxed">
+          <div className="flex-1 text-xs text-amber-900 leading-relaxed">
             <span className="font-semibold">Heads up — data handling.</span>{' '}
             Quick Actions send only aggregate counts (no names, IDs, or emails) to the AI model. Free-form
             chat is unrestricted — please don&apos;t paste sensitive employee data (names, salaries, IDs)
-            unless you&apos;ve cleared it with IT/security. The current backend is Gemini 2.0 Flash (free tier).
+            unless you&apos;ve cleared it with IT/security.
+          </div>
+          <div className="flex-shrink-0 text-right">
+            <div className={`text-[11px] font-semibold tabular-nums ${reqCount >= MAX_REQ - 3 ? 'text-red-600' : 'text-amber-700'}`}>
+              {MAX_REQ - reqCount}/{MAX_REQ}
+            </div>
+            <div className="text-[10px] text-amber-600">requests/hr</div>
           </div>
         </div>
 
@@ -180,13 +202,18 @@ export default function AIAssistantPage() {
                   <button
                     key={action.label}
                     onClick={() => send(action.prompt, action.contextSlice)}
-                    disabled={loading}
+                    disabled={loading || reqCount >= MAX_REQ}
                     className="w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left border border-slate-200 hover:border-brand-400 hover:bg-brand-50/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all group"
                   >
                     <Icon className="w-4 h-4 text-slate-400 group-hover:text-brand-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900 leading-snug">
-                      {action.label}
-                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-slate-700 group-hover:text-slate-900 leading-snug">
+                        {action.label}
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {action.contextSlice === 'headcount' ? '📊 headcount data' : action.contextSlice === 'worksets' ? '📋 workset data' : 'no portal data'}
+                      </p>
+                    </div>
                   </button>
                 )
               })}
