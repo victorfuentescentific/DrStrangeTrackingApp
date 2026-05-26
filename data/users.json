@@ -1,0 +1,50 @@
+[
+  {
+    "id": "u1",
+    "name": "Admin User",
+    "email": "admin@centific.com",
+    "role": "admin",
+    "locale": null,
+    "passwordHash": "$2b$10$KwmEqttIf.k5Fk33lf65cOrzKnfFPvfMeaxtFlGw1Sne2mF/x6YGm"
+  },
+  {
+    "id": "u4",
+    "name": "Sergio",
+    "email": "sergio@centific.com",
+    "role": "admin",
+    "locale": null,
+    "passwordHash": "$2b$10$.6I2msN9By5LCzn7oPVzyOuT1BikJtCLUTyjIQ3k0Lcd7J3Ki4bq6"
+  },
+  {
+    "id": "u6",
+    "name": "Shoeb",
+    "email": "shoeb@centific.com",
+    "role": "admin",
+    "locale": null,
+    "passwordHash": "$2b$10$54TBWitsxwwPsAnFH0b2VeELHVPcFj7C2DHtIvfRY0fHTDj95/u.S"
+  },
+  {
+    "id": "u5",
+    "name": "Victor",
+    "email": "victor@centific.com",
+    "role": "admin",
+    "locale": null,
+    "passwordHash": "$2b$10$BRsvoeF6cJC5tKv5s1dDlufgNs7TOp7x43KQQD35zeo1hWmzNRU5u"
+  },
+  {
+    "id": "u2",
+    "name": "Freelancer One",
+    "email": "fl1@centific.com",
+    "role": "freelancer",
+    "locale": "nl_NL",
+    "passwordHash": "$2b$10$BC8OFRoCQk7OV/ta0GozZuLIMpfklxjBLkBzgwy5MrONuM.AfuoDi"
+  },
+  {
+    "id": "u3",
+    "name": "Freelancer Two",
+    "email": "fl2@centific.com",
+    "role": "freelancer",
+    "locale": "de_DE",
+    "passwordHash": "$2b$10$VSVMvutx5AHKA/p2nII8pOt2.O/gNibnvgiDmg1zoIRLPZqs4v.rm"
+  }
+]

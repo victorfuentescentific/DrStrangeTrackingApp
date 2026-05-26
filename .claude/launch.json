@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "workset-tracker",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd C:\\Users\\v-victorfu\\workset-tracker && npm run dev"],
+      "port": 3000
+    }
+  ]
+}
