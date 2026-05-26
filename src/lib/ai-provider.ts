@@ -1,27 +1,26 @@
 import 'server-only'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AI provider — currently Gemini 2.0 Flash (free tier).
+// AI provider — currently Groq (Llama 3.3 70B, free tier: 6,000 req/day).
 //
-// Named `ai-provider` rather than `gemini` so we can swap to Claude or any
-// other model in Phase 2 without touching the page or API route. The page
+// Named `ai-provider` rather than `groq` so we can swap to Claude or any
+// other model later without touching the page or API route. The page
 // only knows it talks to /api/ai/chat — the route only knows it calls
-// askAI() — and only this file knows it's actually Gemini.
+// askAI() — and only this file knows the actual provider.
 //
-// To swap models later: replace the fetch URL/body in askAI() and leave the
-// rest of the codebase untouched.
+// To swap models later: replace the constants + request/response shapes
+// and leave the rest of the codebase untouched.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MODEL = 'gemini-2.0-flash'
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`
+const MODEL    = 'llama-3.3-70b-versatile'
+const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions'
 
-interface GeminiResponse {
-  candidates?: Array<{
-    content?: { parts?: Array<{ text?: string }> }
-    finishReason?: string
+interface GroqResponse {
+  choices?: Array<{
+    message?: { content?: string }
+    finish_reason?: string
   }>
-  promptFeedback?: { blockReason?: string }
-  error?: { message?: string; status?: string }
+  error?: { message?: string; type?: string }
 }
 
 export interface AskAIOptions {
@@ -38,38 +37,42 @@ export interface AskAIResult {
 }
 
 export async function askAI(prompt: string, opts: AskAIOptions = {}): Promise<AskAIResult> {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
-    return { ok: false, error: 'GEMINI_API_KEY is not configured on the server.', model: MODEL }
+    return { ok: false, error: 'GROQ_API_KEY is not configured on the server.', model: MODEL }
   }
 
-  const body: Record<string, unknown> = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: opts.temperature ?? 0.7,
-      maxOutputTokens: opts.maxTokens ?? 2048,
-    },
-  }
+  const messages: Array<{ role: string; content: string }> = []
   if (opts.systemInstruction) {
-    body.systemInstruction = { parts: [{ text: opts.systemInstruction }] }
+    messages.push({ role: 'system', content: opts.systemInstruction })
+  }
+  messages.push({ role: 'user', content: prompt })
+
+  const body = {
+    model: MODEL,
+    messages,
+    temperature: opts.temperature ?? 0.7,
+    max_tokens:  opts.maxTokens  ?? 2048,
   }
 
   let res: Response
   try {
-    res = await fetch(`${ENDPOINT}?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      // Don't cache LLM responses — they're conversational.
+    res = await fetch(ENDPOINT, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body:  JSON.stringify(body),
       cache: 'no-store',
     })
   } catch (err) {
     return { ok: false, error: `Network error contacting AI provider: ${(err as Error).message}`, model: MODEL }
   }
 
-  let json: GeminiResponse
+  let json: GroqResponse
   try {
-    json = (await res.json()) as GeminiResponse
+    json = (await res.json()) as GroqResponse
   } catch {
     return { ok: false, error: `AI provider returned non-JSON (HTTP ${res.status}).`, model: MODEL }
   }
@@ -78,11 +81,7 @@ export async function askAI(prompt: string, opts: AskAIOptions = {}): Promise<As
     return { ok: false, error: json.error?.message ?? `AI provider HTTP ${res.status}`, model: MODEL }
   }
 
-  if (json.promptFeedback?.blockReason) {
-    return { ok: false, error: `Prompt blocked: ${json.promptFeedback.blockReason}`, model: MODEL }
-  }
-
-  const text = json.candidates?.[0]?.content?.parts?.map(p => p.text ?? '').join('') ?? ''
+  const text = json.choices?.[0]?.message?.content ?? ''
   if (!text) {
     return { ok: false, error: 'AI provider returned an empty response.', model: MODEL }
   }
