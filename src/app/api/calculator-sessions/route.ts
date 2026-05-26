@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
       user_id:     session.id,
       locale:      String(locale),
       workflow:    String(workflow),
-      hc:          Number(hc)          || 0,
+      hc:          Math.round(Number(hc) || 0),
       total_hours: Number(total_hours) || 0,
       iaa_days:    Number(iaa_days)    || 0,
       p2_days:     Number(p2_days)     || 0,
