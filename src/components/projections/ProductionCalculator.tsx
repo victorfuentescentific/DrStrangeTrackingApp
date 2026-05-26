@@ -172,19 +172,21 @@ function OutputCard({ title, icon, output, unit, perPerson, rateLabel, shortage,
 // ─── Calculator session type (mirrors API / DB row) ──────────────────────────
 
 interface CalcSession {
-  id: string
-  locale: string
-  workflow: string
-  hc: number
-  total_hours: number
-  iaa_days: number
-  p2_days: number
-  phi_days: number
-  output_full: number
+  id:              string
+  locale:          string
+  workflow:        string
+  hc:              number
+  total_hours:     number
+  iaa_days:        number
+  p2_days:         number
+  phi_days:        number
+  output_full:     number
   output_buffered: number
-  unit: string
-  label: string | null
-  created_at: string
+  unit:            string
+  label:           string | null
+  date_from:       string | null
+  date_to:         string | null
+  created_at:      string
 }
 
 // ─── History panel ────────────────────────────────────────────────────────────
@@ -261,6 +263,11 @@ function HistoryPanel({
                         {' · '}{s.hc} HC
                         {' · '}{s.total_hours}h
                       </p>
+                      {s.date_from && (
+                        <p className="text-[10px] text-brand-600 font-medium">
+                          {s.date_from}{s.date_to ? ` → ${s.date_to}` : ''}
+                        </p>
+                      )}
                       <p className="text-[10px] text-slate-400">{dateStr} {timeStr}</p>
                     </div>
                     <div className="text-right shrink-0">
@@ -300,6 +307,8 @@ export function ProductionCalculator() {
   const [sessions,     setSessions]     = useState<CalcSession[]>([])
   const [sessLoading,  setSessLoading]  = useState(true)
   const [label,        setLabel]        = useState('')
+  const [dateFrom,     setDateFrom]     = useState('')
+  const [dateTo,       setDateTo]       = useState('')
   const [isSaving,     setIsSaving]     = useState(false)
   const [saveMsg,      setSaveMsg]      = useState<{ ok: boolean; text: string } | null>(null)
 
@@ -321,6 +330,9 @@ export function ProductionCalculator() {
     setIaaDays(s.iaa_days)
     setP2Days(s.p2_days)
     setPhiDays(s.phi_days)
+    setDateFrom(s.date_from ?? '')
+    setDateTo(s.date_to ?? '')
+    setLabel(s.label ?? '')
     setSaveMsg(null)
   }
 
@@ -362,7 +374,9 @@ export function ProductionCalculator() {
           output_full:     Math.round(calc.output),
           output_buffered: Math.round(calc.output * BUFFER),
           unit,
-          label: label.trim() || null,
+          label:     label.trim()    || null,
+          date_from: dateFrom.trim() || null,
+          date_to:   dateTo.trim()   || null,
         }),
       })
       const d = await res.json()
@@ -371,6 +385,8 @@ export function ProductionCalculator() {
       } else {
         setSaveMsg({ ok: true, text: 'Saved!' })
         setLabel('')
+        setDateFrom('')
+        setDateTo('')
         loadSessions()
         setTimeout(() => setSaveMsg(null), 3000)
       }
@@ -559,11 +575,41 @@ export function ProductionCalculator() {
 
       {/* ── Save result ─────────────────────────────────────────────────────── */}
       {!shortage && calc.output > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl px-5 py-4">
-          <p className="text-xs font-semibold text-slate-600 mb-3 flex items-center gap-1.5">
+        <div className="bg-white border border-slate-200 rounded-xl px-5 py-4 space-y-3">
+          <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
             <Save className="w-3.5 h-3.5 text-brand-500" />
             Save this result
           </p>
+
+          {/* Production window */}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+              Production window <span className="normal-case font-normal text-slate-300">(optional)</span>
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] text-slate-500 mb-1">From</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={e => setDateFrom(e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400 text-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-500 mb-1">To</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={e => setDateTo(e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400 text-slate-800"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Label + save button */}
           <div className="flex gap-2">
             <input
               type="text"
@@ -583,9 +629,10 @@ export function ProductionCalculator() {
               Save
             </button>
           </div>
+
           {saveMsg && (
             <p className={cn(
-              'mt-2 text-[11px] font-medium',
+              'text-[11px] font-medium',
               saveMsg.ok ? 'text-green-600' : 'text-red-600',
             )}>
               {saveMsg.text}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { format } from 'date-fns'
-import { ClipboardList, Loader2, AlertTriangle, RefreshCw } from 'lucide-react'
+import { ClipboardList, Loader2, AlertTriangle, RefreshCw, Pencil, Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -20,13 +20,35 @@ interface CalcSession {
   output_buffered: number
   unit:            string
   label:           string | null
+  date_from:       string | null
+  date_to:         string | null
   created_at:      string
+}
+
+interface EditDraft {
+  label:     string
+  date_from: string
+  date_to:   string
 }
 
 const UNIT_BADGE: Record<string, string> = {
   'min audio': 'bg-indigo-100 text-indigo-700',
   'rep':       'bg-amber-100  text-amber-700',
   'WU':        'bg-emerald-100 text-emerald-700',
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—'
+  return format(new Date(iso + 'T12:00:00'), 'dd MMM yyyy')
+}
+
+function fmtRange(from: string | null, to: string | null): string {
+  if (!from && !to) return '—'
+  if (from && to)   return `${fmtDate(from)} → ${fmtDate(to)}`
+  if (from)         return `from ${fmtDate(from)}`
+  return `until ${fmtDate(to)}`
 }
 
 // ─── Filter pill ──────────────────────────────────────────────────────────────
@@ -55,15 +77,129 @@ function Pill({
   )
 }
 
+// ─── Inline edit row ──────────────────────────────────────────────────────────
+
+interface EditRowProps {
+  session:   CalcSession
+  draft:     EditDraft
+  saving:    boolean
+  onChange:  (draft: EditDraft) => void
+  onSave:    () => void
+  onCancel:  () => void
+}
+
+function EditRow({ session: s, draft, saving, onChange, onSave, onCancel }: EditRowProps) {
+  return (
+    <tr className="bg-brand-50/30 border-l-2 border-brand-500">
+
+      {/* Date saved */}
+      <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
+        {format(new Date(s.created_at), 'dd MMM yyyy HH:mm')}
+      </td>
+
+      {/* Locale */}
+      <td className="px-3 py-3">
+        <span className="font-mono text-xs font-semibold text-slate-700">{s.locale}</span>
+      </td>
+
+      {/* Workflow */}
+      <td className="px-3 py-3 text-xs text-slate-600">{s.workflow}</td>
+
+      {/* HC */}
+      <td className="px-3 py-3 text-center text-xs text-slate-600">{s.hc}</td>
+
+      {/* Hours */}
+      <td className="px-3 py-3 text-center text-xs text-slate-600">{s.total_hours}h</td>
+
+      {/* IAA / 2P / PHI */}
+      <td className="px-3 py-3 text-center text-xs text-slate-400">{s.iaa_days > 0 ? `${s.iaa_days}d` : '—'}</td>
+      <td className="px-3 py-3 text-center text-xs text-slate-400">{s.p2_days  > 0 ? `${s.p2_days}d`  : '—'}</td>
+      <td className="px-3 py-3 text-center text-xs text-slate-400">{s.phi_days > 0 ? `${s.phi_days}d` : '—'}</td>
+
+      {/* Output */}
+      <td className="px-3 py-3 text-right">
+        <span className="text-xs font-bold text-slate-800">{s.output_full.toLocaleString()}</span>
+        <span className={cn('ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full',
+          UNIT_BADGE[s.unit] ?? 'bg-slate-100 text-slate-500')}>
+          {s.unit}
+        </span>
+      </td>
+
+      {/* Buffered */}
+      <td className="px-3 py-3 text-right text-xs text-slate-500">
+        {s.output_buffered > 0 ? s.output_buffered.toLocaleString() : '—'}
+      </td>
+
+      {/* Label (editable) */}
+      <td className="px-3 py-3">
+        <input
+          type="text"
+          value={draft.label}
+          onChange={e => onChange({ ...draft, label: e.target.value })}
+          maxLength={120}
+          placeholder="Label…"
+          className="w-full px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500"
+        />
+      </td>
+
+      {/* Production window (editable) */}
+      <td className="px-5 py-3 min-w-[220px]">
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={draft.date_from}
+            onChange={e => onChange({ ...draft, date_from: e.target.value })}
+            className="flex-1 px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          <span className="text-slate-400 text-xs shrink-0">→</span>
+          <input
+            type="date"
+            value={draft.date_to}
+            min={draft.date_from || undefined}
+            onChange={e => onChange({ ...draft, date_to: e.target.value })}
+            className="flex-1 px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+        </div>
+      </td>
+
+      {/* Actions */}
+      <td className="px-3 py-3 text-right whitespace-nowrap">
+        <button
+          onClick={onSave}
+          disabled={saving}
+          title="Save"
+          className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] font-semibold rounded bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition-colors mr-1"
+        >
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+          Save
+        </button>
+        <button
+          onClick={onCancel}
+          title="Cancel"
+          className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] font-semibold rounded bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
+        >
+          <X className="w-3 h-3" />
+          Cancel
+        </button>
+      </td>
+    </tr>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-// isAdmin prop is kept for interface compatibility but not used in this view.
-export function ProjectionHistory({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
-  const [sessions, setSessions]             = useState<CalcSession[]>([])
-  const [loading,  setLoading]              = useState(true)
-  const [error,    setError]                = useState<string | null>(null)
+export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
+  const [sessions,       setSessions]       = useState<CalcSession[]>([])
+  const [loading,        setLoading]        = useState(true)
+  const [error,          setError]          = useState<string | null>(null)
   const [localeFilter,   setLocaleFilter]   = useState<string>('all')
   const [workflowFilter, setWorkflowFilter] = useState<string>('all')
+
+  // ── Edit state ──────────────────────────────────────────────────────────
+  const [editingId,  setEditingId]  = useState<string | null>(null)
+  const [editDraft,  setEditDraft]  = useState<EditDraft>({ label: '', date_from: '', date_to: '' })
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError,  setEditError]  = useState<string | null>(null)
 
   function load() {
     setLoading(true)
@@ -89,6 +225,56 @@ export function ProjectionHistory({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
     [sessions, localeFilter, workflowFilter],
   )
 
+  function startEdit(s: CalcSession) {
+    setEditingId(s.id)
+    setEditDraft({
+      label:     s.label     ?? '',
+      date_from: s.date_from ?? '',
+      date_to:   s.date_to   ?? '',
+    })
+    setEditError(null)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditError(null)
+  }
+
+  async function saveEdit() {
+    if (!editingId) return
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      const res = await fetch(`/api/calculator-sessions/${editingId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label:     editDraft.label.trim()     || null,
+          date_from: editDraft.date_from.trim() || null,
+          date_to:   editDraft.date_to.trim()   || null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setEditError(data.error ?? `Save failed (HTTP ${res.status})`)
+      } else {
+        // Patch the session in local state without a full reload
+        setSessions(prev =>
+          prev.map(s =>
+            s.id === editingId
+              ? { ...s, label: data.label, date_from: data.date_from, date_to: data.date_to }
+              : s,
+          ),
+        )
+        setEditingId(null)
+      }
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Network error')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
 
@@ -97,6 +283,11 @@ export function ProjectionHistory({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
         <div className="flex items-center gap-2">
           <ClipboardList className="w-4 h-4 text-brand-500" />
           <h2 className="text-sm font-bold text-slate-800">Production Calculator Log</h2>
+          {isAdmin && (
+            <span className="text-[10px] font-semibold text-brand-600 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-full">
+              Admin — click ✏ to edit a row
+            </span>
+          )}
         </div>
         <button
           onClick={load}
@@ -113,6 +304,13 @@ export function ProjectionHistory({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
         <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           {error}
+        </div>
+      )}
+
+      {editError && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          Edit failed: {editError}
         </div>
       )}
 
@@ -161,13 +359,13 @@ export function ProjectionHistory({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
 
       {/* ── Log table ── */}
       {filtered.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="text-left  px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Date</th>
-                <th className="text-left  px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Locale</th>
-                <th className="text-left  px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Workflow</th>
+                <th className="text-left   px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Date saved</th>
+                <th className="text-left   px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Locale</th>
+                <th className="text-left   px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Workflow</th>
                 <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">HC</th>
                 <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Hours</th>
                 <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">IAA</th>
@@ -175,61 +373,107 @@ export function ProjectionHistory({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
                 <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">PHI</th>
                 <th className="text-right  px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">1P Output</th>
                 <th className="text-right  px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Buffered</th>
-                <th className="text-left  px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Label</th>
+                <th className="text-left   px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Label</th>
+                <th className="text-left   px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Production window</th>
+                {isAdmin && <th className="px-3 py-2.5 w-24" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filtered.map(s => (
-                <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+              {filtered.map(s => {
+                const isEditing = isAdmin && editingId === s.id
 
-                  <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
-                    {format(new Date(s.created_at), 'dd MMM yyyy HH:mm')}
-                  </td>
+                if (isEditing) {
+                  return (
+                    <EditRow
+                      key={s.id}
+                      session={s}
+                      draft={editDraft}
+                      saving={editSaving}
+                      onChange={setEditDraft}
+                      onSave={saveEdit}
+                      onCancel={cancelEdit}
+                    />
+                  )
+                }
 
-                  <td className="px-3 py-3">
-                    <span className="font-mono text-xs font-semibold text-slate-700">{s.locale}</span>
-                  </td>
+                return (
+                  <tr key={s.id} className="hover:bg-slate-50 transition-colors group">
 
-                  <td className="px-3 py-3 text-xs text-slate-600">{s.workflow}</td>
+                    <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
+                      {format(new Date(s.created_at), 'dd MMM yyyy HH:mm')}
+                    </td>
 
-                  <td className="px-3 py-3 text-center text-xs text-slate-600">{s.hc}</td>
+                    <td className="px-3 py-3">
+                      <span className="font-mono text-xs font-semibold text-slate-700">{s.locale}</span>
+                    </td>
 
-                  <td className="px-3 py-3 text-center text-xs text-slate-600">{s.total_hours}h</td>
+                    <td className="px-3 py-3 text-xs text-slate-600">{s.workflow}</td>
 
-                  <td className="px-3 py-3 text-center text-xs text-slate-400">
-                    {s.iaa_days > 0 ? `${s.iaa_days}d` : '—'}
-                  </td>
+                    <td className="px-3 py-3 text-center text-xs text-slate-600">{s.hc}</td>
 
-                  <td className="px-3 py-3 text-center text-xs text-slate-400">
-                    {s.p2_days > 0 ? `${s.p2_days}d` : '—'}
-                  </td>
+                    <td className="px-3 py-3 text-center text-xs text-slate-600">{s.total_hours}h</td>
 
-                  <td className="px-3 py-3 text-center text-xs text-slate-400">
-                    {s.phi_days > 0 ? `${s.phi_days}d` : '—'}
-                  </td>
+                    <td className="px-3 py-3 text-center text-xs text-slate-400">
+                      {s.iaa_days > 0 ? `${s.iaa_days}d` : '—'}
+                    </td>
 
-                  <td className="px-3 py-3 text-right">
-                    <span className="text-xs font-bold text-slate-800">
-                      {s.output_full.toLocaleString()}
-                    </span>
-                    <span className={cn(
-                      'ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full',
-                      UNIT_BADGE[s.unit] ?? 'bg-slate-100 text-slate-500',
-                    )}>
-                      {s.unit}
-                    </span>
-                  </td>
+                    <td className="px-3 py-3 text-center text-xs text-slate-400">
+                      {s.p2_days > 0 ? `${s.p2_days}d` : '—'}
+                    </td>
 
-                  <td className="px-3 py-3 text-right text-xs text-slate-500">
-                    {s.output_buffered > 0 ? s.output_buffered.toLocaleString() : '—'}
-                  </td>
+                    <td className="px-3 py-3 text-center text-xs text-slate-400">
+                      {s.phi_days > 0 ? `${s.phi_days}d` : '—'}
+                    </td>
 
-                  <td className="px-5 py-3 text-xs text-slate-500 max-w-[160px] truncate">
-                    {s.label ?? <span className="text-slate-300">—</span>}
-                  </td>
+                    <td className="px-3 py-3 text-right">
+                      <span className="text-xs font-bold text-slate-800">
+                        {s.output_full.toLocaleString()}
+                      </span>
+                      <span className={cn(
+                        'ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full',
+                        UNIT_BADGE[s.unit] ?? 'bg-slate-100 text-slate-500',
+                      )}>
+                        {s.unit}
+                      </span>
+                    </td>
 
-                </tr>
-              ))}
+                    <td className="px-3 py-3 text-right text-xs text-slate-500">
+                      {s.output_buffered > 0 ? s.output_buffered.toLocaleString() : '—'}
+                    </td>
+
+                    <td className="px-3 py-3 text-xs text-slate-500 max-w-[140px] truncate">
+                      {s.label ?? <span className="text-slate-300">—</span>}
+                    </td>
+
+                    {/* Production window */}
+                    <td className="px-5 py-3 text-xs whitespace-nowrap">
+                      {s.date_from || s.date_to ? (
+                        <span className="text-brand-700 font-medium">
+                          {fmtRange(s.date_from, s.date_to)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+
+                    {/* Admin edit button */}
+                    {isAdmin && (
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          onClick={() => startEdit(s)}
+                          disabled={editingId !== null}
+                          title="Edit label and production window"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded border border-slate-200 text-slate-500 hover:border-brand-400 hover:text-brand-600 bg-white disabled:opacity-30"
+                        >
+                          <Pencil className="w-2.5 h-2.5" />
+                          Edit
+                        </button>
+                      </td>
+                    )}
+
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
 
@@ -243,7 +487,6 @@ export function ProjectionHistory({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
-      {/* Filter no-match */}
       {!loading && filtered.length === 0 && sessions.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
           <p className="text-slate-400 text-xs">No sessions match the current filters.</p>
@@ -252,7 +495,7 @@ export function ProjectionHistory({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
 
       <p className="text-[11px] text-slate-400">
         Full record of all production calculations saved by you, newest first.
-        Go to the <strong>Production Calculator</strong> tab to run and save new calculations.
+        {isAdmin && ' Admins can edit the label and production window of any entry.'}
       </p>
     </div>
   )

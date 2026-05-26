@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { locale, workflow, hc, total_hours, iaa_days, p2_days, phi_days,
-          output_full, output_buffered, unit, label } = body
+          output_full, output_buffered, unit, label, date_from, date_to } = body
 
   // Basic validation
   if (!locale || !workflow || !unit) {
@@ -95,7 +95,9 @@ export async function POST(req: NextRequest) {
       output_full:      Number(output_full),
       output_buffered:  Number(output_buffered)            || 0,
       unit:        String(unit),
-      label:       label ? String(label).slice(0, 120) : null,
+      label:       label     ? String(label).slice(0, 120) : null,
+      date_from:   date_from ? String(date_from)           : null,
+      date_to:     date_to   ? String(date_to)             : null,
     })
     .select('id, created_at')
     .single()
