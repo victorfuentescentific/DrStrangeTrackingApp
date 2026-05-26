@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback, type JSX } from 'react'
+import { useEffect, useState, useCallback, useMemo, type JSX } from 'react'
 import { format } from 'date-fns'
-import { BarChart3, Loader2, AlertTriangle, PlusCircle, Check } from 'lucide-react'
+import { BarChart3, Loader2, AlertTriangle, PlusCircle, Check, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { weekStart } from '@/lib/projections'
-import type { Actual } from '@/lib/projection-store'
+import type { Actual, Snapshot } from '@/lib/projection-store'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -28,14 +28,26 @@ function fmtWeek(isoDate: string): string {
   return `W/C ${format(new Date(isoDate + 'T12:00:00'), 'd MMM yyyy')}`
 }
 
-// ─── Entry form ───────────────────────────────────────────────────────────────
-
-interface EntryFormProps {
-  canEdit:    boolean
-  onSaved:    () => void
+function fmtNum(n: number): string {
+  return n > 0 ? n.toLocaleString() : '—'
 }
 
-function EntryForm({ canEdit, onSaved }: EntryFormProps) {
+// ─── Delta badge ─────────────────────────────────────────────────────────────
+
+function DeltaBadge({ actual, proj }: { actual: number; proj: number }): JSX.Element | null {
+  if (!proj || !actual) return null
+  const pct  = ((actual - proj) / proj) * 100
+  const good = pct >= 0
+  return (
+    <span className={cn('text-[10px] font-bold', good ? 'text-green-600' : 'text-red-500')}>
+      {good ? '+' : ''}{pct.toFixed(1)}%
+    </span>
+  )
+}
+
+// ─── Entry form ───────────────────────────────────────────────────────────────
+
+function EntryForm({ canEdit, onSaved }: { canEdit: boolean; onSaved: () => void }) {
   const today = new Date()
   const [week,     setWeek]     = useState(isoMonday(today))
   const [locale,   setLocale]   = useState(LOCALES[0])
@@ -47,11 +59,9 @@ function EntryForm({ canEdit, onSaved }: EntryFormProps) {
   const [error,    setError]    = useState<string | null>(null)
   const [success,  setSuccess]  = useState(false)
 
-  // Always snap a picked date to Monday before storing
   function pickWeek(raw: string) {
     const d = new Date(raw + 'T12:00:00')
-    if (isNaN(d.getTime())) return
-    setWeek(isoMonday(d))
+    if (!isNaN(d.getTime())) setWeek(isoMonday(d))
   }
 
   async function submit(e: React.FormEvent) {
@@ -64,9 +74,9 @@ function EntryForm({ canEdit, onSaved }: EntryFormProps) {
     setSaving(true)
     try {
       const res = await fetch('/api/actuals', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week_start: week, locale, workflow, unit, amount: num, notes: notes || undefined }),
+        body:    JSON.stringify({ week_start: week, locale, workflow, unit, amount: num, notes: notes || undefined }),
       })
       setSaving(false)
       if (!res.ok) {
@@ -78,7 +88,6 @@ function EntryForm({ canEdit, onSaved }: EntryFormProps) {
       setAmount('')
       setNotes('')
       onSaved()
-      // Auto-dismiss success message after 3 s
       setTimeout(() => setSuccess(false), 3000)
     } catch (err) {
       setSaving(false)
@@ -111,7 +120,7 @@ function EntryForm({ canEdit, onSaved }: EntryFormProps) {
             onChange={e => pickWeek(e.target.value)}
             className="w-full text-sm rounded-lg border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
-          <p className="text-[10px] text-slate-400 mt-0.5">Snaps to week Monday</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">Snaps to Monday</p>
         </div>
 
         <div>
@@ -190,13 +199,7 @@ function EntryForm({ canEdit, onSaved }: EntryFormProps) {
   )
 }
 
-// ─── Comparison table ─────────────────────────────────────────────────────────
-
-interface CompareProps {
-  actuals:       Actual[]
-  weekStart:     string
-  snapshotList:  SnapWeek[] | null   // passed in from parent to avoid re-fetching
-}
+// ─── CompareTable (summary + per-locale breakdown) ────────────────────────────
 
 interface SnapWeek {
   id:         string
@@ -206,19 +209,20 @@ interface SnapWeek {
   wu:         number
 }
 
-function CompareTable({ actuals, weekStart: ws, snapshotList }: CompareProps) {
-  const snap: SnapWeek | null = snapshotList?.find(s => s.week_start === ws) ?? null
-  const loading = snapshotList === null
+interface CompareProps {
+  actuals:        Actual[]
+  weekStart:      string
+  snapshotList:   SnapWeek[] | null
+  snapshotDetail: Snapshot   | null
+  loadingDetail:  boolean
+}
+
+function CompareTable({ actuals, weekStart: ws, snapshotList, snapshotDetail, loadingDetail }: CompareProps) {
+  const snap = snapshotList?.find(s => s.week_start === ws) ?? null
 
   const weekActuals = actuals.filter(a => a.week_start === ws)
 
-  if (loading) return (
-    <div className="flex items-center gap-2 text-xs text-slate-400 py-4">
-      <Loader2 className="w-3.5 h-3.5 animate-spin" />Loading comparison…
-    </div>
-  )
-
-  // Aggregate actuals by unit
+  // ── Aggregate totals by unit ──────────────────────────────────────────────
   const actualTotals: Record<string, number> = { 'min audio': 0, rep: 0, WU: 0 }
   for (const a of weekActuals) {
     actualTotals[a.unit] = (actualTotals[a.unit] ?? 0) + a.amount
@@ -228,34 +232,60 @@ function CompareTable({ actuals, weekStart: ws, snapshotList }: CompareProps) {
     ? { 'min audio': snap.min_audio, rep: snap.rep, WU: snap.wu }
     : null
 
-  const units: Unit[] = ['min audio', 'rep', 'WU']
+  // ── Per-locale breakdown ──────────────────────────────────────────────────
+  // Actuals grouped by locale + unit
+  const actualByLocale = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    for (const a of weekActuals) {
+      if (!map[a.locale]) map[a.locale] = { 'min audio': 0, rep: 0, WU: 0 }
+      map[a.locale][a.unit] = (map[a.locale][a.unit] ?? 0) + a.amount
+    }
+    return map
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ws, actuals])
 
-  function pctDiff(actual: number, proj: number): JSX.Element | null {
-    if (proj === 0) return null
-    const pct = ((actual - proj) / proj) * 100
-    const good = pct >= 0
-    return (
-      <span className={cn('ml-1.5 text-[10px] font-bold', good ? 'text-green-600' : 'text-red-500')}>
-        {good ? '+' : ''}{pct.toFixed(1)}%
-      </span>
-    )
-  }
+  // Projected grouped by locale (from snapshot detail rows)
+  const projByLocale = useMemo(() => {
+    if (!snapshotDetail) return null
+    const map: Record<string, { min_audio: number; rep: number; wu: number }> = {}
+    for (const row of snapshotDetail.rows) {
+      if (!map[row.locale]) map[row.locale] = { min_audio: 0, rep: 0, wu: 0 }
+      map[row.locale].min_audio += row.min_audio
+      map[row.locale].rep       += row.rep
+      map[row.locale].wu        += row.wu
+    }
+    return map
+  }, [snapshotDetail])
+
+  const allLocales = useMemo(() => {
+    const s = new Set([
+      ...Object.keys(actualByLocale),
+      ...(projByLocale ? Object.keys(projByLocale) : []),
+    ])
+    return Array.from(s).sort()
+  }, [actualByLocale, projByLocale])
+
+  const units: Unit[] = ['min audio', 'rep', 'WU']
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      {/* Header */}
       <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-700">{fmtWeek(ws)} — Projected vs Actual</span>
-        {snap === null && (
+        <span className="text-xs font-semibold text-slate-700">
+          {fmtWeek(ws)} — Projected vs Actual
+        </span>
+        {snap === null && snapshotList !== null && (
           <span className="text-[11px] text-amber-600 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />No snapshot for this week
           </span>
         )}
       </div>
 
+      {/* ── Total summary ── */}
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-slate-100 bg-slate-50/50">
-            <th className="text-left px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Unit</th>
+            <th className="text-left  px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-32">Unit</th>
             <th className="text-right px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Projected</th>
             <th className="text-right px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Actual</th>
             <th className="text-right px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Δ vs proj.</th>
@@ -280,7 +310,8 @@ function CompareTable({ actuals, weekStart: ws, snapshotList }: CompareProps) {
                     : <span className="text-[11px] text-slate-300">—</span>}
                 </td>
                 <td className="px-5 py-3 text-right">
-                  {proj > 0 && actual > 0 ? pctDiff(actual, proj) : <span className="text-[11px] text-slate-300">—</span>}
+                  <DeltaBadge actual={actual} proj={proj} />
+                  {(!proj || !actual) && <span className="text-[11px] text-slate-300">—</span>}
                 </td>
               </tr>
             )
@@ -288,7 +319,79 @@ function CompareTable({ actuals, weekStart: ws, snapshotList }: CompareProps) {
         </tbody>
       </table>
 
-      {/* Actuals detail */}
+      {/* ── Per-locale breakdown ── */}
+      {(allLocales.length > 0 || loadingDetail) && (
+        <div className="border-t border-slate-100">
+          <div className="px-5 py-2.5 bg-slate-50/50 flex items-center gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">By locale</p>
+            {loadingDetail && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+            {!projByLocale && !loadingDetail && snap && (
+              <span className="text-[10px] text-amber-600">projected data not available</span>
+            )}
+          </div>
+
+          {allLocales.length > 0 && (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/30">
+                  <th className="text-left  px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-24">Locale</th>
+                  <th className="text-right px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Proj. audio</th>
+                  <th className="text-right px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Act. audio</th>
+                  <th className="text-right px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Proj. rep</th>
+                  <th className="text-right px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Act. rep</th>
+                  <th className="text-right px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Proj. WU</th>
+                  <th className="text-right px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Act. WU</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {allLocales.map(locale => {
+                  const pa = actualByLocale[locale]  ?? {}
+                  const pp = projByLocale?.[locale]   ?? null
+
+                  const aAudio = pa['min audio'] ?? 0
+                  const aRep   = pa['rep']        ?? 0
+                  const aWU    = pa['WU']          ?? 0
+                  const pAudio = pp?.min_audio     ?? 0
+                  const pRep   = pp?.rep            ?? 0
+                  const pWU    = pp?.wu             ?? 0
+
+                  return (
+                    <tr key={locale} className="hover:bg-slate-50">
+                      <td className="px-5 py-2 font-mono font-semibold text-slate-700">{locale}</td>
+                      {/* Audio */}
+                      <td className="px-4 py-2 text-right text-slate-500">{fmtNum(pAudio)}</td>
+                      <td className="px-4 py-2 text-right">
+                        <span className="font-semibold text-slate-800">{fmtNum(aAudio)}</span>
+                        {aAudio > 0 && pAudio > 0 && (
+                          <span className="ml-1.5"><DeltaBadge actual={aAudio} proj={pAudio} /></span>
+                        )}
+                      </td>
+                      {/* Rep */}
+                      <td className="px-4 py-2 text-right text-slate-500">{fmtNum(pRep)}</td>
+                      <td className="px-4 py-2 text-right">
+                        <span className="font-semibold text-slate-800">{fmtNum(aRep)}</span>
+                        {aRep > 0 && pRep > 0 && (
+                          <span className="ml-1.5"><DeltaBadge actual={aRep} proj={pRep} /></span>
+                        )}
+                      </td>
+                      {/* WU */}
+                      <td className="px-5 py-2 text-right text-slate-500">{fmtNum(pWU)}</td>
+                      <td className="px-5 py-2 text-right">
+                        <span className="font-semibold text-slate-800">{fmtNum(aWU)}</span>
+                        {aWU > 0 && pWU > 0 && (
+                          <span className="ml-1.5"><DeltaBadge actual={aWU} proj={pWU} /></span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* ── Raw actuals log ── */}
       {weekActuals.length > 0 && (
         <div className="border-t border-slate-100">
           <div className="px-5 py-2 bg-slate-50/50">
@@ -296,13 +399,13 @@ function CompareTable({ actuals, weekStart: ws, snapshotList }: CompareProps) {
           </div>
           <div className="divide-y divide-slate-50">
             {weekActuals.map(a => (
-              <div key={a.id} className="flex items-center gap-4 px-5 py-2.5 text-xs">
-                <span className="font-mono text-slate-500 w-16">{a.locale}</span>
-                <span className="text-slate-500 w-20">{a.workflow}</span>
+              <div key={a.id} className="flex items-center gap-4 px-5 py-2 text-xs">
+                <span className="font-mono text-slate-500 w-16 shrink-0">{a.locale}</span>
+                <span className="text-slate-500 w-20 shrink-0">{a.workflow}</span>
                 <span className="font-semibold text-slate-700">{a.amount.toLocaleString()}</span>
                 <span className="text-slate-400">{UNIT_LABEL[a.unit as Unit]}</span>
                 {a.notes && <span className="text-slate-400 italic truncate">{a.notes}</span>}
-                <span className="ml-auto text-[10px] text-slate-300">
+                <span className="ml-auto text-[10px] text-slate-300 shrink-0">
                   {format(new Date(a.entered_at), 'dd MMM HH:mm')}
                 </span>
               </div>
@@ -312,8 +415,114 @@ function CompareTable({ actuals, weekStart: ws, snapshotList }: CompareProps) {
       )}
 
       {weekActuals.length === 0 && (
-        <p className="px-5 py-4 text-xs text-slate-400">No actuals entered for this week yet.</p>
+        <p className="px-5 py-4 text-xs text-slate-400 border-t border-slate-100">
+          No actuals entered for this week yet.
+        </p>
       )}
+    </div>
+  )
+}
+
+// ─── Monthly actual summary ───────────────────────────────────────────────────
+
+interface MonthlyRow {
+  sortKey:   string
+  month:     string
+  projAudio: number
+  projRep:   number
+  projWU:    number
+  actAudio:  number
+  actRep:    number
+  actWU:     number
+}
+
+function MonthlyActualSummary({
+  actuals,
+  snapshots,
+}: {
+  actuals:   Actual[]
+  snapshots: SnapWeek[] | null
+}) {
+  const rows = useMemo((): MonthlyRow[] => {
+    const map: Record<string, MonthlyRow> = {}
+
+    // Bucket actuals by month
+    for (const a of actuals) {
+      const d      = new Date(a.week_start + 'T12:00:00')
+      const sortKey = format(d, 'yyyy-MM')
+      const label   = format(d, 'MMM yyyy')
+      if (!map[sortKey]) {
+        map[sortKey] = { sortKey, month: label, projAudio: 0, projRep: 0, projWU: 0, actAudio: 0, actRep: 0, actWU: 0 }
+      }
+      if (a.unit === 'min audio') map[sortKey].actAudio += a.amount
+      if (a.unit === 'rep')       map[sortKey].actRep   += a.amount
+      if (a.unit === 'WU')        map[sortKey].actWU    += a.amount
+    }
+
+    // Bucket projected totals by month (from snapshot summaries)
+    for (const s of (snapshots ?? [])) {
+      const d      = new Date(s.week_start + 'T12:00:00')
+      const sortKey = format(d, 'yyyy-MM')
+      const label   = format(d, 'MMM yyyy')
+      if (!map[sortKey]) {
+        map[sortKey] = { sortKey, month: label, projAudio: 0, projRep: 0, projWU: 0, actAudio: 0, actRep: 0, actWU: 0 }
+      }
+      map[sortKey].projAudio += s.min_audio
+      map[sortKey].projRep   += s.rep
+      map[sortKey].projWU    += s.wu
+    }
+
+    return Object.values(map).sort((a, b) => b.sortKey.localeCompare(a.sortKey))
+  }, [actuals, snapshots])
+
+  if (rows.length === 0) return null
+
+  // Only show months that have at least some data on both sides
+  const meaningfulRows = rows.filter(r => r.actAudio + r.actRep + r.actWU > 0)
+  if (meaningfulRows.length === 0) return null
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+        <TrendingUp className="w-4 h-4 text-brand-500" />
+        <span className="text-sm font-semibold text-slate-700">Monthly summary — projected vs actual</span>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 bg-slate-50/50">
+            <th className="text-left  px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-28">Month</th>
+            <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Proj. audio</th>
+            <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Act. audio</th>
+            <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Δ audio</th>
+            <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Proj. rep</th>
+            <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Act. rep</th>
+            <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Δ rep</th>
+            <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Proj. WU</th>
+            <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Act. WU</th>
+            <th className="text-right px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Δ WU</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-50">
+          {meaningfulRows.map(r => (
+            <tr key={r.sortKey} className="hover:bg-slate-50">
+              <td className="px-5 py-2.5 text-xs font-semibold text-slate-700">{r.month}</td>
+              <td className="px-3 py-2.5 text-right text-xs text-slate-500">{fmtNum(r.projAudio)}</td>
+              <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-800">{fmtNum(r.actAudio)}</td>
+              <td className="px-3 py-2.5 text-right"><DeltaBadge actual={r.actAudio} proj={r.projAudio} /></td>
+              <td className="px-3 py-2.5 text-right text-xs text-slate-500">{fmtNum(r.projRep)}</td>
+              <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-800">{fmtNum(r.actRep)}</td>
+              <td className="px-3 py-2.5 text-right"><DeltaBadge actual={r.actRep} proj={r.projRep} /></td>
+              <td className="px-3 py-2.5 text-right text-xs text-slate-500">{fmtNum(r.projWU)}</td>
+              <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-800">{fmtNum(r.actWU)}</td>
+              <td className="px-5 py-2.5 text-right"><DeltaBadge actual={r.actWU} proj={r.projWU} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="px-5 py-2 text-[10px] text-slate-400 border-t border-slate-100">
+        Monthly projected = sum of weekly snapshot projections for that month.
+        Only months with at least one actual entered are shown.
+      </p>
     </div>
   )
 }
@@ -321,12 +530,14 @@ function CompareTable({ actuals, weekStart: ws, snapshotList }: CompareProps) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ProjectionActuals({ canEdit }: { canEdit: boolean }) {
-  const today   = new Date()
-  const [week,         setWeek]         = useState(isoMonday(today))
-  const [actuals,      setActuals]      = useState<Actual[]>([])
-  const [snapshots,    setSnapshots]    = useState<SnapWeek[] | null>(null)
-  const [loading,      setLoading]      = useState(true)
-  const [error,        setError]        = useState<string | null>(null)
+  const today = new Date()
+  const [week,           setWeek]           = useState(isoMonday(today))
+  const [actuals,        setActuals]        = useState<Actual[]>([])
+  const [snapshots,      setSnapshots]      = useState<SnapWeek[] | null>(null)
+  const [snapshotDetail, setSnapshotDetail] = useState<Snapshot | null>(null)
+  const [loadingDetail,  setLoadingDetail]  = useState(false)
+  const [loading,        setLoading]        = useState(true)
+  const [error,          setError]          = useState<string | null>(null)
 
   const loadActuals = useCallback(() => {
     setLoading(true)
@@ -336,7 +547,7 @@ export function ProjectionActuals({ canEdit }: { canEdit: boolean }) {
       .catch(e => { setError(e instanceof Error ? e.message : 'Network error'); setLoading(false) })
   }, [])
 
-  // Load snapshots once — reused across all week switches in CompareTable
+  // Load snapshot summaries once
   useEffect(() => {
     fetch('/api/projections/snapshots')
       .then(r => r.json())
@@ -346,8 +557,22 @@ export function ProjectionActuals({ canEdit }: { canEdit: boolean }) {
 
   useEffect(() => { loadActuals() }, [loadActuals])
 
-  // Distinct weeks from actuals + current week
-  const weeks = Array.from(new Set([isoMonday(today), ...actuals.map(a => a.week_start)])).sort().reverse()
+  // Load snapshot detail (per-locale rows) when selected week changes
+  useEffect(() => {
+    if (!snapshots) return
+    const snap = snapshots.find(s => s.week_start === week)
+    if (!snap) { setSnapshotDetail(null); return }
+    setLoadingDetail(true)
+    fetch(`/api/projections/snapshots/${snap.id}`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => { setSnapshotDetail(d as Snapshot); setLoadingDetail(false) })
+      .catch(() => { setSnapshotDetail(null); setLoadingDetail(false) })
+  }, [week, snapshots])
+
+  // Distinct weeks from actuals + current week, newest first
+  const weeks = Array.from(
+    new Set([isoMonday(today), ...actuals.map(a => a.week_start)]),
+  ).sort().reverse()
 
   return (
     <div className="space-y-5">
@@ -374,7 +599,7 @@ export function ProjectionActuals({ canEdit }: { canEdit: boolean }) {
         </div>
       ) : (
         <>
-          {/* Week picker */}
+          {/* Week pill buttons */}
           <div className="flex items-center gap-2 flex-wrap">
             {weeks.slice(0, 8).map(w => (
               <button
@@ -392,8 +617,19 @@ export function ProjectionActuals({ canEdit }: { canEdit: boolean }) {
             ))}
           </div>
 
-          <CompareTable actuals={actuals} weekStart={week} snapshotList={snapshots} />
+          <CompareTable
+            actuals={actuals}
+            weekStart={week}
+            snapshotList={snapshots}
+            snapshotDetail={snapshotDetail}
+            loadingDetail={loadingDetail}
+          />
         </>
+      )}
+
+      {/* Monthly summary (shown once we have enough data) */}
+      {actuals.length > 0 && (
+        <MonthlyActualSummary actuals={actuals} snapshots={snapshots ?? []} />
       )}
     </div>
   )
