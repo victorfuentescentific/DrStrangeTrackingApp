@@ -181,7 +181,7 @@ interface CalcSession {
   p2_days: number
   phi_days: number
   output_full: number
-  output_buf: number
+  output_buffered: number
   unit: string
   label: string | null
   created_at: string
@@ -359,8 +359,8 @@ export function ProductionCalculator() {
           iaa_days:    iaaDays,
           p2_days:     p2Days,
           phi_days:    phiDays,
-          output_full: Math.round(calc.output),
-          output_buf:  Math.round(calc.output * BUFFER),
+          output_full:     Math.round(calc.output),
+          output_buffered: Math.round(calc.output * BUFFER),
           unit,
           label: label.trim() || null,
         }),

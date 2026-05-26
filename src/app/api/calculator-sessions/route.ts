@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const { locale, workflow, hc, total_hours, iaa_days, p2_days, phi_days,
-          output_full, output_buf, unit, label } = body
+          output_full, output_buffered, unit, label } = body
 
   // Basic validation
   if (!locale || !workflow || !unit) {
@@ -89,11 +89,11 @@ export async function POST(req: NextRequest) {
       workflow:    String(workflow),
       hc:          Math.round(Number(hc) || 0),
       total_hours: Number(total_hours) || 0,
-      iaa_days:    Number(iaa_days)    || 0,
-      p2_days:     Number(p2_days)     || 0,
-      phi_days:    Number(phi_days)    || 0,
-      output_full: Number(output_full),
-      output_buf:  Number(output_buf)  || 0,
+      iaa_days:         Math.round(Number(iaa_days)        || 0),
+      p2_days:          Math.round(Number(p2_days)         || 0),
+      phi_days:         Math.round(Number(phi_days)        || 0),
+      output_full:      Number(output_full),
+      output_buffered:  Number(output_buffered)            || 0,
       unit:        String(unit),
       label:       label ? String(label).slice(0, 120) : null,
     })
