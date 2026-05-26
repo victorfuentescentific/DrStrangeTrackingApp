@@ -570,7 +570,7 @@ export function ProductionCalculator() {
               value={label}
               onChange={e => setLabel(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
-              placeholder="Optional label (e.g. "Week 23 DAX NL")"
+              placeholder={`Optional label (e.g. "Week 23 DAX NL")`}
               maxLength={120}
               className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400 text-slate-800"
             />
