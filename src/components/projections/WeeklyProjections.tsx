@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useStore } from '@/lib/store'
 import { formatDate, cn } from '@/lib/utils'
 import {
@@ -67,7 +67,20 @@ export function WeeklyProjections() {
   const friDate   = addDays(monDate, 4)
 
   // HC overrides: worksetId → string (editable input)
-  const [hcOverrides, setHcOverrides] = useState<Record<string, string>>({})
+  // Persisted to localStorage so overrides survive tab switches and page reloads.
+  const [hcOverrides, setHcOverrides] = useState<Record<string, string>>(() => {
+    try {
+      const stored = localStorage.getItem('dr-strange-hc-overrides')
+      return stored ? (JSON.parse(stored) as Record<string, string>) : {}
+    } catch {
+      return {}
+    }
+  })
+
+  useEffect(() => {
+    try { localStorage.setItem('dr-strange-hc-overrides', JSON.stringify(hcOverrides)) }
+    catch { /* localStorage unavailable (SSR, incognito quota) */ }
+  }, [hcOverrides])
 
   const active = useMemo(
     () => worksets.filter(w => w.status !== 'completed' && w.startDate && w.eta),
