@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
     .from('calculator_sessions')
     .insert({
       user_id:     session.id,
+      created_by:  session.id,
       locale:      String(locale),
       workflow:    String(workflow),
       hc:          Math.round(Number(hc) || 0),
