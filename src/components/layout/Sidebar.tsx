@@ -41,7 +41,9 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: '/admin/hours',  label: 'Team Hours',      icon: Clock },
       { href: '/reports',      label: 'Reports',         icon: BarChart3 },
-      { href: '/ai',           label: 'AI Assistant',    icon: Sparkles,   roles: ['admin', 'lead'] },
+      // AI Assistant — hidden until Vercel deployment & Gemini key issues are resolved.
+      // To re-enable: uncomment the line below. All code at /ai and /api/ai/* is intact.
+      // { href: '/ai', label: 'AI Assistant', icon: Sparkles, roles: ['admin', 'lead'] },
     ],
   },
   {
