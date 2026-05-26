@@ -2,8 +2,7 @@
 
 import { create } from 'zustand'
 import {
-  Workset, Notification, FilterState, User,
-  WorksetStatus,
+  Workset, Notification, FilterState, User, WorksetStatus,
 } from './types'
 import { MOCK_WORKSETS, MOCK_USERS } from './mock-data'
 import { generateId, generateWorksetId, daysUntil } from './utils'

@@ -100,33 +100,6 @@ export interface Notification {
   priority: NotificationPriority
 }
 
-export type ClaudeCommandType =
-  | 'create_workset'
-  | 'update_workset'
-  | 'daily_summary'
-  | 'weekly_report'
-  | 'get_overdue'
-  | 'get_blocked'
-  | 'get_at_risk'
-  | 'generate_reminder'
-  | 'generate_escalation'
-  | 'suggest_actions'
-  | 'parse_notes'
-
-export interface ClaudeCommand {
-  command: ClaudeCommandType
-  params?: Record<string, unknown>
-  rawPrompt?: string
-}
-
-export interface ClaudeCommandResult {
-  success: boolean
-  output: string
-  data?: unknown
-  actions?: string[]
-  error?: string
-}
-
 export interface FilterState {
   search: string
   workflow: WorkflowType | 'all'
