@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Calculator, ChevronDown, Shield, Zap } from 'lucide-react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { Calculator, ChevronDown, Shield, Zap, Save, Clock, RotateCcw, ChevronUp, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { WorkflowType } from '@/lib/types'
 import { get1PRate } from '@/lib/eta-calculator'
@@ -169,6 +169,124 @@ function OutputCard({ title, icon, output, unit, perPerson, rateLabel, shortage,
   )
 }
 
+// ─── Calculator session type (mirrors API / DB row) ──────────────────────────
+
+interface CalcSession {
+  id: string
+  locale: string
+  workflow: string
+  hc: number
+  total_hours: number
+  iaa_days: number
+  p2_days: number
+  phi_days: number
+  output_full: number
+  output_buf: number
+  unit: string
+  label: string | null
+  created_at: string
+}
+
+// ─── History panel ────────────────────────────────────────────────────────────
+
+function HistoryPanel({
+  sessions,
+  onLoad,
+  onRefresh,
+  loading,
+}: {
+  sessions: CalcSession[]
+  onLoad: (s: CalcSession) => void
+  onRefresh: () => void
+  loading: boolean
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-3.5 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-100"
+      >
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-slate-400" />
+          <span className="text-sm font-semibold text-slate-700">
+            Past calculations
+            {sessions.length > 0 && (
+              <span className="ml-1.5 text-xs font-medium text-slate-400">({sessions.length})</span>
+            )}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={e => { e.stopPropagation(); onRefresh() }}
+            disabled={loading}
+            className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors"
+            title="Refresh"
+          >
+            <RotateCcw className={cn('w-3 h-3', loading && 'animate-spin')} />
+          </button>
+          {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        </div>
+      </button>
+
+      {open && (
+        <div>
+          {loading && sessions.length === 0 && (
+            <div className="flex items-center justify-center py-8 gap-2 text-slate-400">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="text-xs">Loading…</span>
+            </div>
+          )}
+          {!loading && sessions.length === 0 && (
+            <p className="text-center text-xs text-slate-400 py-8">
+              No saved calculations yet. Save a result below.
+            </p>
+          )}
+          {sessions.length > 0 && (
+            <div className="divide-y divide-slate-50">
+              {sessions.map(s => {
+                const d = new Date(s.created_at)
+                const dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                const timeStr = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                return (
+                  <div key={s.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 group">
+                    <div className="flex-1 min-w-0">
+                      {s.label && (
+                        <p className="text-xs font-semibold text-slate-700 truncate">{s.label}</p>
+                      )}
+                      <p className="text-[11px] text-slate-500">
+                        <span className="font-mono font-medium text-slate-600">{s.locale}</span>
+                        {' · '}{s.workflow}
+                        {' · '}{s.hc} HC
+                        {' · '}{s.total_hours}h
+                      </p>
+                      <p className="text-[10px] text-slate-400">{dateStr} {timeStr}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-brand-600">{Math.round(s.output_full).toLocaleString()}</p>
+                      <p className="text-[10px] text-slate-400">{s.unit}</p>
+                    </div>
+                    <button
+                      onClick={() => onLoad(s)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-semibold text-brand-600 hover:text-brand-800 px-2 py-1 rounded bg-brand-50 hover:bg-brand-100 shrink-0"
+                      title="Load these inputs into the calculator"
+                    >
+                      Load
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Main calculator ──────────────────────────────────────────────────────────
+
 export function ProductionCalculator() {
   const [locale, setLocale]         = useState('nl_NL')
   const [workflow, setWorkflow]     = useState<WorkflowType>('DAX')
@@ -177,6 +295,34 @@ export function ProductionCalculator() {
   const [iaaDays, setIaaDays]       = useState(0)
   const [p2Days, setP2Days]         = useState(0)
   const [phiDays, setPhiDays]       = useState(0)
+
+  // ── Session history state ────────────────────────────────────────────────
+  const [sessions,     setSessions]     = useState<CalcSession[]>([])
+  const [sessLoading,  setSessLoading]  = useState(true)
+  const [label,        setLabel]        = useState('')
+  const [isSaving,     setIsSaving]     = useState(false)
+  const [saveMsg,      setSaveMsg]      = useState<{ ok: boolean; text: string } | null>(null)
+
+  const loadSessions = useCallback(() => {
+    setSessLoading(true)
+    fetch('/api/calculator-sessions')
+      .then(r => r.json())
+      .then(d => { setSessions(Array.isArray(d) ? d : []); setSessLoading(false) })
+      .catch(() => setSessLoading(false))
+  }, [])
+
+  useEffect(() => { loadSessions() }, [loadSessions])
+
+  function loadSession(s: CalcSession) {
+    setLocale(s.locale)
+    setWorkflow(s.workflow as WorkflowType)
+    setHc(s.hc)
+    setTotalHours(s.total_hours)
+    setIaaDays(s.iaa_days)
+    setP2Days(s.p2_days)
+    setPhiDays(s.phi_days)
+    setSaveMsg(null)
+  }
 
   const p2Hc = P2_HC[locale] ?? DEFAULT_P2_HC
 
@@ -192,10 +338,48 @@ export function ProductionCalculator() {
     return { iaaHours, p2Hours, phiHours, consumed, remaining, output, perPerson }
   }, [locale, workflow, hc, totalHours, iaaDays, p2Days, phiDays, p2Hc])
 
-  const unit     = getUnit(workflow)
-  const shortage = calc.consumed > totalHours
-  const daily    = get1PRate(workflow, locale)
+  const unit      = getUnit(workflow)
+  const shortage  = calc.consumed > totalHours
+  const daily     = get1PRate(workflow, locale)
   const rateLabel = `Rate: ${daily} ${unit}/p/day · 2Pass team: ${p2Hc} (${locale})`
+
+  async function handleSave() {
+    if (calc.output <= 0 || shortage) return
+    setIsSaving(true)
+    setSaveMsg(null)
+    try {
+      const res = await fetch('/api/calculator-sessions', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          locale,
+          workflow,
+          hc,
+          total_hours: totalHours,
+          iaa_days:    iaaDays,
+          p2_days:     p2Days,
+          phi_days:    phiDays,
+          output_full: Math.round(calc.output),
+          output_buf:  Math.round(calc.output * BUFFER),
+          unit,
+          label: label.trim() || null,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) {
+        setSaveMsg({ ok: false, text: d.error ?? 'Save failed' })
+      } else {
+        setSaveMsg({ ok: true, text: 'Saved!' })
+        setLabel('')
+        loadSessions()
+        setTimeout(() => setSaveMsg(null), 3000)
+      }
+    } catch (err) {
+      setSaveMsg({ ok: false, text: `Network error: ${(err as Error).message}` })
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -372,6 +556,51 @@ export function ProductionCalculator() {
       <p className="text-[10px] text-slate-400 text-center">
         Buffer applies a 20% safety margin to account for interruptions, absences, and quality rework.
       </p>
+
+      {/* ── Save result ─────────────────────────────────────────────────────── */}
+      {!shortage && calc.output > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl px-5 py-4">
+          <p className="text-xs font-semibold text-slate-600 mb-3 flex items-center gap-1.5">
+            <Save className="w-3.5 h-3.5 text-brand-500" />
+            Save this result
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={label}
+              onChange={e => setLabel(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
+              placeholder="Optional label (e.g. "Week 23 DAX NL")"
+              maxLength={120}
+              className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400 text-slate-800"
+            />
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white transition-colors"
+            >
+              {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+              Save
+            </button>
+          </div>
+          {saveMsg && (
+            <p className={cn(
+              'mt-2 text-[11px] font-medium',
+              saveMsg.ok ? 'text-green-600' : 'text-red-600',
+            )}>
+              {saveMsg.text}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── History panel ───────────────────────────────────────────────────── */}
+      <HistoryPanel
+        sessions={sessions}
+        onLoad={loadSession}
+        onRefresh={loadSessions}
+        loading={sessLoading}
+      />
     </div>
   )
 }
