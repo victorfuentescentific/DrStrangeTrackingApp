@@ -23,20 +23,23 @@ const LABEL_WIDTH = 260
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'TH', 'F', 'S'] as const
 
-function getPhaseSegments(ws: Workset, spanStart: Date): Array<{ left: number; width: number; color: string; label: string }> {
+function getPhaseSegments(ws: Workset, _spanStart: Date): Array<{ left: number; width: number; color: string; label: string }> {
   if (!ws.phases) return []
-  const p     = ws.phases
-  const total = differenceInCalendarDays(parseISO(p.etaDate), parseISO(ws.startDate)) + 1 || 1
-  const segs  = [
+  const p       = ws.phases
+  const wsStart = parseISO(ws.startDate)
+  const total   = differenceInCalendarDays(parseISO(p.etaDate), wsStart) + 1 || 1
+  // Segments are expressed as % WITHIN the workset's own span (0 = workset start, 100 = etaDate).
+  // The rendering code then maps these onto the chart via: chartLeft + (seg.left/100) * chartWidth.
+  const segs = [
     { start: ws.startDate, end: p.p1End,   color: PHASE_HEX.p1,  label: '1P+IAA' },
     { start: p.rev1End,    end: p.rev1End, color: PHASE_HEX.rev, label: 'REV'    },
     { start: p.p2Start,    end: p.p2End,   color: PHASE_HEX.p2,  label: '2P'     },
     { start: p.phiStart,   end: p.etaDate, color: PHASE_HEX.phi, label: 'PHI'    },
   ]
   return segs.map(s => {
-    const segStart = differenceInCalendarDays(parseISO(s.start), spanStart)
-    const segLen   = differenceInCalendarDays(parseISO(s.end), parseISO(s.start)) + 1
-    return { left: (segStart / total) * 100, width: (segLen / total) * 100, color: s.color, label: s.label }
+    const segOffset = differenceInCalendarDays(parseISO(s.start), wsStart)  // offset from workset start
+    const segLen    = differenceInCalendarDays(parseISO(s.end), parseISO(s.start)) + 1
+    return { left: (segOffset / total) * 100, width: (segLen / total) * 100, color: s.color, label: s.label }
   })
 }
 
@@ -245,17 +248,19 @@ export function GanttView({ worksets }: GanttViewProps) {
                     />
                   )}
 
+                  {/* Continuous background spine — always visible, spans start → ETA */}
                   <div
-                    className="absolute top-1/2 -translate-y-1/2 h-5 rounded-full opacity-20"
-                    style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`, backgroundColor: WORKFLOW_COLORS[ws.workflow] }}
+                    className="absolute top-1/2 -translate-y-1/2 h-2 rounded-full"
+                    style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`, backgroundColor: WORKFLOW_COLORS[ws.workflow], opacity: 0.35 }}
                   />
 
+                  {/* Phase segments overlay — positioned relative to workset span */}
                   {segs.length > 0 ? segs.map((seg, i) => (
                     <div key={i} className="absolute top-1/2 -translate-y-1/2 h-5 rounded-sm" title={seg.label}
-                      style={{ left: `${Math.max(0, leftPct + (seg.left / 100) * widthPct)}%`, width: `${(seg.width / 100) * widthPct}%`, backgroundColor: seg.color, opacity: 0.85 }} />
+                      style={{ left: `${Math.max(0, leftPct + (seg.left / 100) * widthPct)}%`, width: `${Math.max(0.4, (seg.width / 100) * widthPct)}%`, backgroundColor: seg.color, opacity: 0.88 }} />
                   )) : (
                     <div className="absolute top-1/2 -translate-y-1/2 h-5 rounded-full"
-                      style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`, backgroundColor: WORKFLOW_COLORS[ws.workflow], opacity: 0.7 }} />
+                      style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`, backgroundColor: WORKFLOW_COLORS[ws.workflow], opacity: 0.75 }} />
                   )}
 
                   <div className="absolute top-1/2 -translate-y-1/2 text-[9px] font-medium text-slate-600 whitespace-nowrap"

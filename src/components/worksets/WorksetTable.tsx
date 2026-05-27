@@ -1,14 +1,16 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Ban, ArrowUpRight, Trash2, CalendarClock } from 'lucide-react'
-import { Workset } from '@/lib/types'
+import { Ban, ArrowUpRight, Trash2, CalendarClock, Layers, X } from 'lucide-react'
+import { Workset, PhaseTimeline, PhaseActuals } from '@/lib/types'
 import { formatDate, daysUntil, daysLabel, STATUS_COLORS, STATUS_LABELS, PRIORITY_COLORS, getEffectiveRisk, expiryCountdownLabel, cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useStore } from '@/lib/store'
 import { ROLE_PERMISSIONS } from '@/lib/types'
 import { WORKFLOW_BG } from '@/lib/eta-calculator'
+import { PhaseEditor } from '@/components/worksets/PhaseEditor'
 
 interface WorksetTableProps {
   worksets: Workset[]
@@ -16,8 +18,12 @@ interface WorksetTableProps {
 
 export function WorksetTable({ worksets }: WorksetTableProps) {
   const router = useRouter()
-  const { deleteWorkset, currentUser } = useStore()
+  const { deleteWorkset, updateWorkset, currentUser } = useStore()
   const perms = ROLE_PERMISSIONS[currentUser.role]
+  const canEditPhases = ['admin', 'pm', 'lead'].includes(currentUser.role)
+
+  // Phase quick-edit modal
+  const [phasesFor, setPhasesFor] = useState<Workset | null>(null)
 
   if (worksets.length === 0) {
     return (
@@ -30,6 +36,7 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
   }
 
   return (
+    <>
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -160,18 +167,31 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
 
                   {/* Actions */}
                   <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                    {perms.canDelete && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          if (confirm(`Delete ${ws.worksetId}?`)) deleteWorkset(ws.id)
-                        }}
-                        className="text-slate-400 hover:text-red-600"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {canEditPhases && ws.phases && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setPhasesFor(ws)}
+                          className="text-slate-400 hover:text-brand-600"
+                          title="Edit phases"
+                        >
+                          <Layers className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                      {perms.canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (confirm(`Delete ${ws.worksetId}?`)) deleteWorkset(ws.id)
+                          }}
+                          className="text-slate-400 hover:text-red-600"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )
@@ -183,5 +203,42 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
         <p className="text-xs text-slate-500">{worksets.length} workset{worksets.length !== 1 ? 's' : ''} shown</p>
       </div>
     </div>
+
+    {/* Phase quick-edit modal */}
+    {phasesFor && (
+      <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm pt-16 px-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden max-h-[80vh] flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">Phase Timeline</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                <span className="font-mono bg-slate-100 px-1 rounded">{phasesFor.worksetId}</span>
+                {' · '}{phasesFor.name}
+              </p>
+            </div>
+            <button onClick={() => setPhasesFor(null)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {/* PhaseEditor */}
+          <div className="overflow-y-auto p-6">
+            <PhaseEditor
+              workset={phasesFor}
+              canEdit={canEditPhases}
+              onSave={(newPhases: PhaseTimeline, newActuals: PhaseActuals) => {
+                updateWorkset(phasesFor.id, {
+                  phases:       newPhases,
+                  actualPhases: newActuals,
+                  eta:          newPhases.etaDate,
+                }, 'Phase timeline edited via worksets table')
+                setPhasesFor(null)
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

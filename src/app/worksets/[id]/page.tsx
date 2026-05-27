@@ -3,16 +3,14 @@
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { AppLayout } from '@/components/layout/AppLayout'
-import { WorksetForm } from '@/components/worksets/WorksetForm'
 import { PhaseEditor } from '@/components/worksets/PhaseEditor'
-import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { StatusBadge, PriorityBadge, RiskBadge } from '@/components/worksets/StatusBadge'
 import { useStore } from '@/lib/store'
 import { formatDate, daysLabel, daysUntil, cn } from '@/lib/utils'
 import { ROLE_PERMISSIONS } from '@/lib/types'
-import { WORKFLOW_BG, calculateETA } from '@/lib/eta-calculator'
+import { WORKFLOW_BG } from '@/lib/eta-calculator'
 import {
   ArrowLeft, Edit2, Trash2, Ban, ArrowUpRight, Clock,
   Layers, History, FileText, Info, Link2, Unlink, ChevronRight,
@@ -33,7 +31,6 @@ export default function WorksetDetailPage() {
   const { worksets, updateWorkset, deleteWorkset, linkSuccessor, unlinkSuccessor, currentUser } = useStore()
   const perms = ROLE_PERMISSIONS[currentUser.role]
   const canEditPhases = ['admin', 'pm', 'lead'].includes(currentUser.role)
-  const [isEditing, setIsEditing] = useState(false)
   const [isLinkingSuccessor, setIsLinkingSuccessor] = useState(false)
   const [selectedSuccessorId, setSelectedSuccessorId] = useState('')
 
@@ -82,7 +79,7 @@ export default function WorksetDetailPage() {
           </Button>
           <div className="flex gap-2">
             {perms.canEdit && (
-              <Button variant="outline" size="sm" icon={<Edit2 className="w-3.5 h-3.5" />} onClick={() => setIsEditing(true)}>
+              <Button variant="outline" size="sm" icon={<Edit2 className="w-3.5 h-3.5" />} onClick={() => router.push(`/worksets/${ws.id}/edit`)}>
                 Edit
               </Button>
             )}
@@ -441,50 +438,7 @@ export default function WorksetDetailPage() {
         )}
       </div>
 
-      {/* Edit Modal */}
-      <Modal
-        isOpen={isEditing}
-        onClose={() => setIsEditing(false)}
-        title={`Edit ${ws.worksetId}`}
-        size="lg"
-      >
-        <WorksetForm
-          initial={ws}
-          isEdit
-          onCancel={() => setIsEditing(false)}
-          onSubmit={(form) => {
-            const n = parseInt(form.teamSize) || 11
-            const newPhases = form.locale && form.startDate && n >= 5
-              ? calculateETA(form.workflow, form.locale, n, form.startDate)
-              : undefined
-            updateWorkset(ws.id, {
-              name: form.name,
-              workflow: form.workflow,
-              locale: form.locale,
-              team: form.team,
-              region: form.region,
-              teamSize: n,
-              startDate: form.startDate,
-              eta: form.eta,
-              revisedEta: form.revisedEta || undefined,
-              phases: newPhases,
-              status: form.status,
-              priority: form.priority,
-              riskLevel: form.riskLevel,
-              expirationDate: form.expirationDate || undefined,
-              isBlocked: form.isBlocked,
-              blockerDescription: form.blockerDescription || undefined,
-              isEscalated: form.isEscalated,
-              escalationReason: form.escalationReason || undefined,
-              notes: form.notes,
-              completedAt: form.status === 'completed' && !ws.completedAt
-                ? new Date().toISOString().split('T')[0]
-                : ws.completedAt,
-            }, 'Manual edit via UI')
-            setIsEditing(false)
-          }}
-        />
-      </Modal>
+      {/* Edit is now a full page at /worksets/[id]/edit */}
     </AppLayout>
   )
 }

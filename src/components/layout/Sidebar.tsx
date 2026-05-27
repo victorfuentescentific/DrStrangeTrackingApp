@@ -52,7 +52,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: '/admin/headcount',    label: 'HC Overview',        icon: UserCog,      roles: ['admin', 'lead'] },
       { href: '/admin/submissions',  label: 'Hours Submissions',  icon: ShieldCheck,  roles: ['admin'] },
-      { href: '/submit',             label: 'Freelancer Form',    icon: ClipboardList, roles: ['admin'] },
+      { href: '/submit',             label: 'Submit Hours',       icon: ClipboardList, roles: ['admin', 'freelancer'] },
       { href: '/notes',              label: 'Notes & Links',      icon: NotebookPen,  roles: ['admin'] },
     ],
   },

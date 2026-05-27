@@ -63,15 +63,26 @@ function fmtDate(d: string) {
 }
 
 function empTypeLabel(t: string | null): string {
-  if (t === 'FREELANCER') return 'FL'
+  if (t === 'FTE')        return 'Centific'
+  if (t === 'FREELANCER') return 'Contractor'
   return t ?? ''
 }
 
 function empTypeClass(t: string | null): string {
-  if (t === 'FTE')        return 'bg-blue-100 text-blue-700'
+  if (t === 'FTE')        return 'bg-sky-100 text-sky-700'
   if (t === 'PM')         return 'bg-purple-100 text-purple-700'
-  if (t === 'FREELANCER') return 'bg-gray-100 text-gray-500'
+  if (t === 'FREELANCER') return 'bg-gray-100 text-gray-600'
   return 'bg-gray-100 text-gray-400'
+}
+
+// Human-readable display label for roles
+const ROLE_DISPLAY_NAMES: Record<string, string> = {
+  admin:      'Admin',
+  pm:         'PM',
+  lead:       'Lead',
+  fte:        'Centific',
+  freelancer: 'Contractor',
+  viewer:     'Viewer',
 }
 
 // ── Employee type badge — editable for admins ─────────────────────────────────
@@ -108,6 +119,7 @@ function EmployeeTypeBadge({ row, isAdmin, onUpdate }: EmpBadgeProps) {
         {EMPLOYEE_TYPES.map(t => (
           <option key={t} value={t}>{empTypeLabel(t) || t}</option>
         ))}
+
       </select>
     )
   }
@@ -505,10 +517,16 @@ function DateRangePicker({ value, onChange }: { value: DateRangeValue; onChange:
 
   function handleSelect(range: DayPickerRange | undefined) {
     setSelected(range)
-    // Auto-close and apply once both ends are chosen
     if (range?.from && range?.to) {
-      onChange({ from: range.from.toISOString().slice(0, 10), to: range.to.toISOString().slice(0, 10) })
-      setOpen(false)
+      const fromStr = range.from.toISOString().slice(0, 10)
+      const toStr   = range.to.toISOString().slice(0, 10)
+      // Only apply and close when a true range (from < to) has been selected.
+      // Ignore single-day "ranges" (from === to) so the first click doesn't close
+      // the picker before the user can pick the end date.
+      if (fromStr !== toStr) {
+        onChange({ from: fromStr, to: toStr })
+        setOpen(false)
+      }
     }
   }
 
@@ -692,9 +710,9 @@ function StatsPanel({ users, workflows, filterLocale, onFilterLocale, filterWork
   const allLocales = [...new Set(users.map(u => u.locale).filter(Boolean) as string[])].sort()
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
       {/* Collapsible header */}
-      <button onClick={onToggle} className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
+      <button onClick={onToggle} className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors rounded-2xl">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Team Coverage</span>
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${coverageColor(weekRate)}`}>
@@ -1165,9 +1183,9 @@ export default function OverviewPage() {
 
         {/* Role info badge */}
         <p className="text-xs text-gray-400">
-          Viewing as <span className="font-medium text-gray-600">{me.role}</span>
+          Viewing as <span className="font-medium text-gray-600">{ROLE_DISPLAY_NAMES[me.role] ?? me.role}</span>
           {me.locale && <> · <span className="font-medium text-gray-600">{me.locale}</span></>}
-          {isAdmin && <span className="ml-2 text-blue-500">Click any cell to edit · Select rows for batch edit · Click FTE/FL badge to reassign</span>}
+          {isAdmin && <span className="ml-2 text-blue-500">Click any cell to edit · Select rows for batch edit · Click contract-type badge to reassign</span>}
         </p>
       </div>
 
