@@ -36,6 +36,7 @@ function toWorkset(row: Record<string, unknown>): Workset {
     expirationDate:       (row.expiration_date as string | null) ?? undefined,
     completedAt:          (row.completed_at as string | null) ?? undefined,
     predecessorId:        (row.predecessor_id as string | null) ?? undefined,
+    actualPhases:         (row.actual_phases as Workset['actualPhases'] | null) ?? undefined,
     createdAt:            row.created_at as string,
     updatedAt:            row.updated_at as string,
     auditTrail:           (row.audit_trail as Workset['auditTrail']) ?? [],
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
     expiration_date:      body.expirationDate ?? null,
     completed_at:         body.completedAt ?? null,
     predecessor_id:       body.predecessorId ?? null,
+    actual_phases:        body.actualPhases ?? null,
     audit_trail:          body.auditTrail ?? [],
     created_at:           body.createdAt ?? new Date().toISOString().split('T')[0],
     updated_at:           body.updatedAt ?? new Date().toISOString().split('T')[0],
@@ -139,6 +141,7 @@ export async function PUT(req: NextRequest) {
   if (body.expirationDate     !== undefined) row.expiration_date     = body.expirationDate ?? null
   if (body.completedAt        !== undefined) row.completed_at        = body.completedAt ?? null
   if (body.predecessorId      !== undefined) row.predecessor_id      = body.predecessorId ?? null
+  if (body.actualPhases       !== undefined) row.actual_phases       = body.actualPhases ?? null
   if (body.auditTrail         !== undefined) row.audit_trail         = body.auditTrail
 
   const { data, error } = await db.from('worksets').update(row).eq('id', body.id).select().single()

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { Workset, PhaseTimeline } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
-import { WORKFLOW_COLORS, PHASE_HEX, adjustPhaseDate, calculateETA } from '@/lib/eta-calculator'
+import { WORKFLOW_COLORS, PHASE_HEX, adjustPhaseDate, calculateETA, EditablePhaseField } from '@/lib/eta-calculator'
 import { useStore } from '@/lib/store'
 import { differenceInCalendarDays, parseISO, addDays, format } from 'date-fns'
 import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
@@ -43,12 +43,12 @@ function getPhaseSegments(ws: Workset, spanStart: Date): Array<{ left: number; w
 function PhaseEditorColumn({
   field, label, color, helperText, phases, onEdit,
 }: {
-  field: 'p1End' | 'p2End' | 'etaDate'
+  field: EditablePhaseField
   label: string
   color: string
   helperText: string
   phases: PhaseTimeline
-  onEdit: (field: 'p1End' | 'p2End' | 'etaDate', date: string) => void
+  onEdit: (field: EditablePhaseField, date: string) => void
 }) {
   const value = phases[field]
   return (
@@ -133,7 +133,7 @@ export function GanttView({ worksets }: GanttViewProps) {
   const today       = new Date()
   const todayOffset = (differenceInCalendarDays(today, spanStart) / spanDays) * 100
 
-  function handlePhaseEdit(ws: Workset, field: 'p1End' | 'p2End' | 'etaDate', newDate: string) {
+  function handlePhaseEdit(ws: Workset, field: EditablePhaseField, newDate: string) {
     if (!ws.phases || !newDate) return
     const adjusted = adjustPhaseDate(ws.phases, field, newDate)
     updateWorkset(ws.id, { phases: adjusted, eta: adjusted.etaDate })
@@ -273,9 +273,11 @@ export function GanttView({ worksets }: GanttViewProps) {
                     <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mt-0.5">Phase dates</p>
                   </div>
                   <div className="flex-1 px-4 py-3">
-                    <div className="grid grid-cols-3 gap-4">
-                      <PhaseEditorColumn field="p1End"   label="1P+IAA ends"   color={PHASE_HEX.p1}  helperText="Shifts 2P + PHI"    phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
-                      <PhaseEditorColumn field="p2End"   label="2P ends"       color={PHASE_HEX.p2}  helperText="Shifts PHI / ETA"   phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
+                    <div className="grid grid-cols-5 gap-3">
+                      <PhaseEditorColumn field="p1End"   label="1P+IAA ends"   color={PHASE_HEX.p1}  helperText="Shifts 2P + PHI"       phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
+                      <PhaseEditorColumn field="rev1End" label="Review 1 ends" color={PHASE_HEX.rev} helperText="Shifts 2P start + PHI"  phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
+                      <PhaseEditorColumn field="p2End"   label="2P ends"       color={PHASE_HEX.p2}  helperText="Shifts PHI / ETA"       phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
+                      <PhaseEditorColumn field="rev2End" label="Review 2 ends" color={PHASE_HEX.rev} helperText="Shifts PHI start + ETA" phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
                       <PhaseEditorColumn field="etaDate" label="PHI ends / ETA" color={PHASE_HEX.phi} helperText="PHI phase length only" phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
                     </div>
                     <button type="button" onClick={() => handleReset(ws)}

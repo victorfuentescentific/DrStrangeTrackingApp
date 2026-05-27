@@ -35,6 +35,7 @@ export function toWorkset(row: Record<string, unknown>): Workset {
     expirationDate:     (row.expiration_date as string | null) ?? undefined,
     completedAt:        (row.completed_at  as string | null) ?? undefined,
     predecessorId:      (row.predecessor_id as string | null) ?? undefined,
+    actualPhases: (row.actual_phases as import('./types').PhaseActuals | null) ?? undefined,
     createdAt:          row.created_at as string,
     updatedAt:          row.updated_at as string,
     auditTrail:         (row.audit_trail as Workset['auditTrail']) ?? [],

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { WorksetForm } from '@/components/worksets/WorksetForm'
+import { PhaseEditor } from '@/components/worksets/PhaseEditor'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -11,8 +12,7 @@ import { StatusBadge, PriorityBadge, RiskBadge } from '@/components/worksets/Sta
 import { useStore } from '@/lib/store'
 import { formatDate, daysLabel, daysUntil, cn } from '@/lib/utils'
 import { ROLE_PERMISSIONS } from '@/lib/types'
-import { WORKFLOW_BG, PHASE_COLORS } from '@/lib/eta-calculator'
-import { calculateETA } from '@/lib/eta-calculator'
+import { WORKFLOW_BG, calculateETA } from '@/lib/eta-calculator'
 import {
   ArrowLeft, Edit2, Trash2, Ban, ArrowUpRight, Clock,
   Layers, History, FileText, Info, Link2, Unlink, ChevronRight,
@@ -32,6 +32,7 @@ export default function WorksetDetailPage() {
   const router = useRouter()
   const { worksets, updateWorkset, deleteWorkset, linkSuccessor, unlinkSuccessor, currentUser } = useStore()
   const perms = ROLE_PERMISSIONS[currentUser.role]
+  const canEditPhases = ['admin', 'pm', 'lead'].includes(currentUser.role)
   const [isEditing, setIsEditing] = useState(false)
   const [isLinkingSuccessor, setIsLinkingSuccessor] = useState(false)
   const [selectedSuccessorId, setSelectedSuccessorId] = useState('')
@@ -63,13 +64,6 @@ export default function WorksetDetailPage() {
   const effectiveEta = ws.revisedEta ?? ws.eta
   const days = daysUntil(effectiveEta)
   const phases = ws.phases
-
-  const phaseRows = phases ? [
-    { label: '1P + IAA', start: phases.p1Start,  end: phases.p1End,   days: phases.d1,  colorClass: PHASE_COLORS.p1 },
-    { label: 'Review',   start: phases.rev1End,  end: phases.rev1End, days: 1,          colorClass: PHASE_COLORS.rev },
-    { label: '2nd Pass', start: phases.p2Start,  end: phases.p2End,   days: phases.d2,  colorClass: PHASE_COLORS.p2 },
-    { label: 'PHI',      start: phases.phiStart, end: phases.etaDate, days: phases.dpf, colorClass: PHASE_COLORS.phi },
-  ] : []
 
   const handleDelete = () => {
     if (confirm(`Delete ${ws.worksetId} — "${ws.name}"? This cannot be undone.`)) {
@@ -229,33 +223,29 @@ export default function WorksetDetailPage() {
         </div>
 
         {/* Phase Timeline */}
-        {phases && (
+        {(phases || canEditPhases) && (
           <div className="bg-white rounded-xl border border-slate-200 p-5">
             <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
               <Layers className="w-4 h-4 text-brand-500" /> Phase Timeline
-              <span className="ml-2 text-[10px] font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                {phases.model} model · {phases.totalDays}d total
-              </span>
-              {phases.isTier2 && (
+              {phases && (
+                <span className="ml-2 text-[10px] font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                  {phases.model} model · {phases.totalDays}d total
+                </span>
+              )}
+              {phases?.isTier2 && (
                 <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                   Tier 2 estimate
                 </span>
               )}
             </h3>
-            <div className="space-y-2">
-              {phaseRows.map(ph => (
-                <div key={ph.label} className="flex items-center gap-4 text-sm">
-                  <div className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0', ph.colorClass)} />
-                  <span className="w-24 font-medium text-slate-700">{ph.label}</span>
-                  <span className="text-slate-500">
-                    {formatDate(ph.start)}
-                    {ph.start !== ph.end && <> → {formatDate(ph.end)}</>}
-                  </span>
-                  <span className="text-slate-400 text-xs">({ph.days}d)</span>
-                </div>
-              ))}
-            </div>
-            {phases.model === 'Parallel' && (
+            <PhaseEditor
+              workset={ws}
+              canEdit={canEditPhases}
+              onSave={(newPhases, newActuals) => {
+                updateWorkset(ws.id, { phases: newPhases, actualPhases: newActuals }, 'Phase timeline edited manually')
+              }}
+            />
+            {phases?.model === 'Parallel' && (
               <p className="text-[11px] text-amber-600 mt-3 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                 Parallel model: 2P team (4 users) and PHI Phase 1 (N−4 users) run simultaneously after IAA.
               </p>

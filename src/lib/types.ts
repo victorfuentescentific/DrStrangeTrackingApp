@@ -60,6 +60,17 @@ export interface AuditEntry {
   reason?: string
 }
 
+export interface PhaseActuals {
+  p1ActualStart?:  string   // YYYY-MM-DD
+  p1ActualEnd?:    string
+  rev1ActualEnd?:  string
+  p2ActualStart?:  string
+  p2ActualEnd?:    string
+  rev2ActualEnd?:  string
+  phiActualStart?: string
+  phiActualEnd?:   string   // = actual completion date
+}
+
 export interface Workset {
   id: string
   worksetId: string
@@ -76,6 +87,7 @@ export interface Workset {
   eta: string
   revisedEta?: string
   phases?: PhaseTimeline
+  actualPhases?: PhaseActuals  // recorded actual start/end per phase
   isBlocked: boolean
   blockerDescription?: string
   isEscalated: boolean

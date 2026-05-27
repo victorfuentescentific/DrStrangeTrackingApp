@@ -258,9 +258,11 @@ export function calculateSuccessorETA(
 // ─── Manual phase adjustment ─────────────────────────────────────────────────
 // Shifts all phase dates that come after `field` by the same calendar delta.
 // Used when a user manually overrides a phase end date in the Gantt/detail view.
+export type EditablePhaseField = 'p1End' | 'rev1End' | 'p2Start' | 'p2End' | 'rev2End' | 'phiStart' | 'etaDate'
+
 export function adjustPhaseDate(
   phases: PhaseTimeline,
-  field: 'p1End' | 'p2End' | 'etaDate',
+  field: EditablePhaseField,
   newDate: string,
 ): PhaseTimeline {
   const parse  = (d: string) => new Date(d + 'T12:00:00')
@@ -268,29 +270,23 @@ export function adjustPhaseDate(
   if (msDiff === 0) return phases
   const shift  = (d: string) => new Date(parse(d).getTime() + msDiff).toISOString().split('T')[0]
 
-  if (field === 'p1End') {
-    return {
-      ...phases,
-      p1End:    newDate,
-      rev1End:  shift(phases.rev1End),
-      p2Start:  shift(phases.p2Start),
-      p2End:    shift(phases.p2End),
-      rev2End:  shift(phases.rev2End),
-      phiStart: shift(phases.phiStart),
-      etaDate:  shift(phases.etaDate),
-    }
+  switch (field) {
+    case 'p1End':
+      return { ...phases, p1End: newDate, rev1End: shift(phases.rev1End), p2Start: shift(phases.p2Start), p2End: shift(phases.p2End), rev2End: shift(phases.rev2End), phiStart: shift(phases.phiStart), etaDate: shift(phases.etaDate) }
+    case 'rev1End':
+      return { ...phases, rev1End: newDate, p2Start: shift(phases.p2Start), p2End: shift(phases.p2End), rev2End: shift(phases.rev2End), phiStart: shift(phases.phiStart), etaDate: shift(phases.etaDate) }
+    case 'p2Start':
+      return { ...phases, p2Start: newDate, p2End: shift(phases.p2End), rev2End: shift(phases.rev2End), phiStart: shift(phases.phiStart), etaDate: shift(phases.etaDate) }
+    case 'p2End':
+      return { ...phases, p2End: newDate, rev2End: shift(phases.rev2End), phiStart: shift(phases.phiStart), etaDate: shift(phases.etaDate) }
+    case 'rev2End':
+      return { ...phases, rev2End: newDate, phiStart: shift(phases.phiStart), etaDate: shift(phases.etaDate) }
+    case 'phiStart':
+      return { ...phases, phiStart: newDate, etaDate: shift(phases.etaDate) }
+    case 'etaDate':
+    default:
+      return { ...phases, etaDate: newDate }
   }
-  if (field === 'p2End') {
-    return {
-      ...phases,
-      p2End:    newDate,
-      rev2End:  shift(phases.rev2End),
-      phiStart: shift(phases.phiStart),
-      etaDate:  shift(phases.etaDate),
-    }
-  }
-  // etaDate only (PHI phase length changes)
-  return { ...phases, etaDate: newDate }
 }
 
 // ─── Phase label helpers ──────────────────────────────────────────────────────
