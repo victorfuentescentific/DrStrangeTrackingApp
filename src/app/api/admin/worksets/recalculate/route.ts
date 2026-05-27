@@ -60,6 +60,12 @@ export async function POST() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const all = (data ?? []).map(r => toWorkset(r as unknown as Record<string, unknown>))
 
+  // Debug: surface what we fetched so we can diagnose zero-update results
+  const debugSample = all.slice(0, 3).map(w => ({
+    id: w.id, worksetId: w.worksetId, locale: w.locale,
+    startDate: w.startDate, predecessorId: w.predecessorId ?? null,
+  }))
+
   // Separate standalone and back-to-back, skip completed worksets with no phases
   const standalone  = all.filter(w => !w.predecessorId)
   const backToBack  = all.filter(w =>  w.predecessorId)
@@ -130,9 +136,13 @@ export async function POST() {
 
   return NextResponse.json({
     ok:      errors.length === 0,
+    total:   all.length,
+    standalone: standalone.length,
+    backToBack: backToBack.length,
     updated,
     skipped,
     errors,
-    message: `Recalculated ${updated} workset${updated !== 1 ? 's' : ''}${skipped ? `, skipped ${skipped}` : ''}.`,
+    debugSample,
+    message: `Recalculated ${updated} workset${updated !== 1 ? 's' : ''}${skipped ? `, skipped ${skipped}` : ''} (${all.length} total fetched).`,
   })
 }
