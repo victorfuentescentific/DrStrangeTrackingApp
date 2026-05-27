@@ -32,6 +32,7 @@ export function toWorkset(row: Record<string, unknown>): Workset {
     isEscalated:        row.is_escalated as boolean,
     escalationReason:   (row.escalation_reason    as string | null) ?? undefined,
     notes:              (row.notes as string) ?? '',
+    expirationDate:     (row.expiration_date as string | null) ?? undefined,
     completedAt:        (row.completed_at  as string | null) ?? undefined,
     predecessorId:      (row.predecessor_id as string | null) ?? undefined,
     createdAt:          row.created_at as string,

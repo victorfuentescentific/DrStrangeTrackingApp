@@ -49,6 +49,7 @@ export default function NewWorksetPage() {
                 status: form.status,
                 priority: form.priority,
                 riskLevel: form.riskLevel,
+                expirationDate: form.expirationDate || undefined,
                 isBlocked: form.isBlocked,
                 blockerDescription: form.blockerDescription || undefined,
                 isEscalated: form.isEscalated,

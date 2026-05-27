@@ -116,6 +116,43 @@ export const RISK_COLORS: Record<RiskLevel, string> = {
   critical: 'bg-red-50 text-red-700',
 }
 
+// ─── Expiration-driven risk ───────────────────────────────────────────────────
+//
+// Full-override model — once the expiry window is breached (≤ 30 days),
+// the expiry-derived level completely replaces the manually set risk.
+//
+// Thresholds (calendar days until expiration_date):
+//   > 30  → no override, show manual risk
+//   ≤ 30  → medium
+//   ≤ 14  → high
+//   ≤  7  → critical
+//   past  → critical
+
+export function getEffectiveRisk(
+  riskLevel: RiskLevel,
+  expirationDate?: string,
+  status?: WorksetStatus,
+): RiskLevel {
+  // No override for completed worksets, or when no expiry date is set
+  if (status === 'completed' || !expirationDate) return riskLevel
+
+  const daysLeft = daysUntil(expirationDate)
+
+  if (daysLeft > 30) return riskLevel       // outside window — manual risk wins
+  if (daysLeft > 14) return 'medium'
+  if (daysLeft >  7) return 'high'
+  return 'critical'                          // ≤ 7 days or already past
+}
+
+/** Returns a short human-readable label for the expiry countdown shown in badges. */
+export function expiryCountdownLabel(expirationDate: string): string {
+  const d = daysUntil(expirationDate)
+  if (d < 0)  return `Expired ${Math.abs(d)}d ago`
+  if (d === 0) return 'Expires today'
+  if (d === 1) return 'Expires tomorrow'
+  return `Expires in ${d}d`
+}
+
 // ─── Notification ─────────────────────────────────────────────────────────────
 
 export const NOTIFICATION_ICONS: Record<NotificationType, string> = {

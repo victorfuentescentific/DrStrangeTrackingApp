@@ -105,7 +105,7 @@ export default function WorksetDetailPage() {
           <div className="flex flex-wrap items-center gap-3">
             <StatusBadge status={ws.status} />
             <PriorityBadge priority={ws.priority} />
-            <RiskBadge risk={ws.riskLevel} />
+            <RiskBadge risk={ws.riskLevel} expirationDate={ws.expirationDate} status={ws.status} />
             <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', WORKFLOW_BG[ws.workflow])}>
               {ws.workflow}
             </span>
@@ -174,6 +174,30 @@ export default function WorksetDetailPage() {
                 {ws.revisedEta && (
                   <Field label="Revised ETA">
                     <span className="text-amber-600 font-medium">{formatDate(ws.revisedEta)}</span>
+                  </Field>
+                )}
+                {ws.expirationDate && (
+                  <Field label="Expiration Date">
+                    <span className={
+                      daysUntil(ws.expirationDate) <= 7
+                        ? 'text-red-600 font-semibold'
+                        : daysUntil(ws.expirationDate) <= 14
+                          ? 'text-orange-600 font-medium'
+                          : daysUntil(ws.expirationDate) <= 30
+                            ? 'text-amber-600 font-medium'
+                            : 'text-slate-700'
+                    }>
+                      {formatDate(ws.expirationDate)}
+                      {ws.status !== 'completed' && (
+                        <span className="ml-2 text-[10px] text-slate-400">
+                          {daysUntil(ws.expirationDate) < 0
+                            ? `(${Math.abs(daysUntil(ws.expirationDate))}d overdue)`
+                            : daysUntil(ws.expirationDate) === 0
+                              ? '(today)'
+                              : `(${daysUntil(ws.expirationDate)}d left)`}
+                        </span>
+                      )}
+                    </span>
                   </Field>
                 )}
                 {ws.completedAt && <Field label="Completed On">{formatDate(ws.completedAt)}</Field>}
@@ -453,6 +477,7 @@ export default function WorksetDetailPage() {
               status: form.status,
               priority: form.priority,
               riskLevel: form.riskLevel,
+              expirationDate: form.expirationDate || undefined,
               isBlocked: form.isBlocked,
               blockerDescription: form.blockerDescription || undefined,
               isEscalated: form.isEscalated,

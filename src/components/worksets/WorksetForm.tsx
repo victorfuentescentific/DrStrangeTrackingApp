@@ -7,8 +7,8 @@ import { LOCALES_BY_REGION } from '@/lib/mock-data'
 import { Button } from '@/components/ui/Button'
 import { useStore } from '@/lib/store'
 import { calculateETA, calculateSuccessorETA, addWorkingDays, getSuccessorStartDate, getDefaultTeamSize, TIER2_LOCALES, WORKFLOW_BG } from '@/lib/eta-calculator'
-import { formatDate, cn } from '@/lib/utils'
-import { AlertTriangle, Zap, Info, Link2 } from 'lucide-react'
+import { formatDate, cn, getEffectiveRisk, expiryCountdownLabel, RISK_COLORS, RISK_LABELS } from '@/lib/utils'
+import { AlertTriangle, Zap, Info, Link2, CalendarClock } from 'lucide-react'
 
 type FormData = {
   name: string
@@ -20,6 +20,7 @@ type FormData = {
   startDate: string
   eta: string
   revisedEta: string
+  expirationDate: string
   status: WorksetStatus
   priority: Priority
   riskLevel: RiskLevel
@@ -42,7 +43,7 @@ const today = new Date().toISOString().split('T')[0]
 
 const DEFAULT: FormData = {
   name: '', workflow: 'DAX', locale: '', team: 'Transcription', region: 'EU',
-  teamSize: '11', startDate: today, eta: '', revisedEta: '',
+  teamSize: '11', startDate: today, eta: '', revisedEta: '', expirationDate: '',
   status: 'not-started', priority: 'medium', riskLevel: 'low',
   isBlocked: false, blockerDescription: '',
   isEscalated: false, escalationReason: '', notes: '',
@@ -66,6 +67,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
       startDate: initial.startDate,
       eta: initial.eta,
       revisedEta: initial.revisedEta ?? '',
+      expirationDate: initial.expirationDate ?? '',
       status: initial.status,
       priority: initial.priority,
       riskLevel: initial.riskLevel,
@@ -434,6 +436,49 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
       <div>
         <label className={labelClass}>Revised ETA (optional)</label>
         <input type="date" value={form.revisedEta} onChange={e => set('revisedEta', e.target.value)} className={inputClass} />
+      </div>
+
+      {/* Expiration Date */}
+      <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 space-y-2">
+        <div className="flex items-center gap-2 mb-1">
+          <CalendarClock className="w-3.5 h-3.5 text-amber-600" />
+          <label className="text-xs font-semibold text-amber-800">Expiration Date (hard deadline)</label>
+        </div>
+        <input
+          type="date"
+          value={form.expirationDate}
+          onChange={e => set('expirationDate', e.target.value)}
+          className={inputClass}
+        />
+        <p className="text-[10px] text-amber-700">
+          Hard deadline — different from ETA. Drives automatic risk escalation when within 30 days.
+        </p>
+        {/* Live risk preview */}
+        {form.expirationDate && (() => {
+          const effective = getEffectiveRisk(form.riskLevel, form.expirationDate, form.status)
+          const overriding = effective !== form.riskLevel
+          return (
+            <div className={cn(
+              'flex items-center gap-2 mt-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border',
+              overriding
+                ? 'bg-white border-amber-300 text-amber-800'
+                : 'bg-white border-slate-200 text-slate-600',
+            )}>
+              <span className={cn(
+                'px-2 py-0.5 rounded-full text-[10px] font-bold',
+                RISK_COLORS[effective],
+              )}>
+                {RISK_LABELS[effective]}
+              </span>
+              <span className="text-slate-500">{expiryCountdownLabel(form.expirationDate)}</span>
+              {overriding && (
+                <span className="ml-auto text-amber-700 font-semibold text-[10px]">
+                  ↑ Expiry override active
+                </span>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Status + Priority + Risk */}

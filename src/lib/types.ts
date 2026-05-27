@@ -81,6 +81,7 @@ export interface Workset {
   isEscalated: boolean
   escalationReason?: string
   notes: string
+  expirationDate?: string  // hard deadline — workset must complete by this date
   completedAt?: string
   predecessorId?: string   // set when this workset is the successor of another
   createdAt: string

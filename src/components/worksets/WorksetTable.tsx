@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Ban, ArrowUpRight, Trash2 } from 'lucide-react'
 import { Workset } from '@/lib/types'
-import { formatDate, daysUntil, daysLabel, STATUS_COLORS, STATUS_LABELS, PRIORITY_COLORS, cn } from '@/lib/utils'
+import { formatDate, daysUntil, daysLabel, STATUS_COLORS, STATUS_LABELS, PRIORITY_COLORS, getEffectiveRisk, cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useStore } from '@/lib/store'
@@ -124,11 +124,20 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
                           <ArrowUpRight className="w-4 h-4 text-orange-500" />
                         </span>
                       )}
-                      {(ws.riskLevel === 'high' || ws.riskLevel === 'critical') && ws.status !== 'completed' && (
-                        <span title={`Risk: ${ws.riskLevel}`}>
-                          <AlertTriangle className="w-4 h-4 text-amber-500" />
-                        </span>
-                      )}
+                      {(() => {
+                        const effRisk = getEffectiveRisk(ws.riskLevel, ws.expirationDate, ws.status)
+                        if ((effRisk === 'high' || effRisk === 'critical') && ws.status !== 'completed') {
+                          const label = ws.expirationDate && effRisk !== ws.riskLevel
+                            ? `Risk: ${effRisk} (expiry-driven)`
+                            : `Risk: ${effRisk}`
+                          return (
+                            <span title={label}>
+                              <AlertTriangle className="w-4 h-4 text-amber-500" />
+                            </span>
+                          )
+                        }
+                        return null
+                      })()}
                     </div>
                   </td>
 

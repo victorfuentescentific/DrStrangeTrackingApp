@@ -33,6 +33,7 @@ function toWorkset(row: Record<string, unknown>): Workset {
     isEscalated:          row.is_escalated as boolean,
     escalationReason:     (row.escalation_reason as string | null) ?? undefined,
     notes:                (row.notes as string) ?? '',
+    expirationDate:       (row.expiration_date as string | null) ?? undefined,
     completedAt:          (row.completed_at as string | null) ?? undefined,
     predecessorId:        (row.predecessor_id as string | null) ?? undefined,
     createdAt:            row.created_at as string,
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
     is_escalated:         body.isEscalated ?? false,
     escalation_reason:    body.escalationReason ?? null,
     notes:                body.notes ?? '',
+    expiration_date:      body.expirationDate ?? null,
     completed_at:         body.completedAt ?? null,
     predecessor_id:       body.predecessorId ?? null,
     audit_trail:          body.auditTrail ?? [],
@@ -134,6 +136,7 @@ export async function PUT(req: NextRequest) {
   if (body.isEscalated        !== undefined) row.is_escalated        = body.isEscalated
   if (body.escalationReason   !== undefined) row.escalation_reason   = body.escalationReason ?? null
   if (body.notes              !== undefined) row.notes               = body.notes
+  if (body.expirationDate     !== undefined) row.expiration_date     = body.expirationDate ?? null
   if (body.completedAt        !== undefined) row.completed_at        = body.completedAt ?? null
   if (body.predecessorId      !== undefined) row.predecessor_id      = body.predecessorId ?? null
   if (body.auditTrail         !== undefined) row.audit_trail         = body.auditTrail
