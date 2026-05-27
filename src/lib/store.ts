@@ -23,6 +23,7 @@ interface AppStore {
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
   initialize: () => Promise<void>
+  reloadWorksets: () => Promise<void>
   addWorkset: (data: Omit<Workset, 'id' | 'worksetId' | 'createdAt' | 'updatedAt' | 'auditTrail'>) => Workset
   updateWorkset: (id: string, updates: Partial<Workset>, reason?: string) => void
   deleteWorkset: (id: string) => void
@@ -76,8 +77,12 @@ export const useStore = create<AppStore>()(
 
       initialize: async () => {
         if (get().isInitialized) return
+        // Load worksets — same logic as reloadWorksets, guarded by isInitialized
+        return get().reloadWorksets()
+      },
 
-        // Load worksets from Supabase via API
+      reloadWorksets: async () => {
+        // Load worksets from Supabase via API (no isInitialized guard — always fetches)
         let worksets: Workset[] = []
         try {
           const res = await fetch('/api/worksets')

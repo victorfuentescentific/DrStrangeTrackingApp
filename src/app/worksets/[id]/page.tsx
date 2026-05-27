@@ -242,7 +242,11 @@ export default function WorksetDetailPage() {
               workset={ws}
               canEdit={canEditPhases}
               onSave={(newPhases, newActuals) => {
-                updateWorkset(ws.id, { phases: newPhases, actualPhases: newActuals }, 'Phase timeline edited manually')
+                updateWorkset(ws.id, {
+                  phases:       newPhases,
+                  actualPhases: newActuals,
+                  eta:          newPhases.etaDate,   // keep top-level ETA in sync with PHI end
+                }, 'Phase timeline edited manually')
               }}
             />
             {phases?.model === 'Parallel' && (

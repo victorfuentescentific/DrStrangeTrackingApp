@@ -12,7 +12,7 @@ import { ROLE_PERMISSIONS } from '@/lib/types'
 
 export default function WorksetsPage() {
   const router = useRouter()
-  const { getFilteredWorksets, currentUser, initialize } = useStore()
+  const { getFilteredWorksets, currentUser, reloadWorksets } = useStore()
   const perms = ROLE_PERMISSIONS[currentUser.role]
   const worksets = getFilteredWorksets()
 
@@ -42,8 +42,8 @@ export default function WorksetsPage() {
       } else {
         setRecalcState('done')
         setRecalcMsg(body.message)
-        // Reload store so the updated phases are reflected immediately
-        await initialize()
+        // Force-reload store so the updated phases are reflected immediately
+        await reloadWorksets()
       }
     } catch (e) {
       setRecalcState('error')
