@@ -41,13 +41,18 @@ export async function validatePassword(user: StoredUser, password: string): Prom
   return bcrypt.compare(password, user.passwordHash)
 }
 
-export async function updatePassword(id: string, newPassword: string): Promise<boolean> {
+export async function updatePassword(
+  id: string,
+  newPassword: string,
+): Promise<{ ok: boolean; error?: string }> {
   const hash = await bcrypt.hash(newPassword, 10)
-  const { data, error } = await db
+  const { error } = await db
     .from('Account credentials')
     .update({ password_hash: hash })
     .eq('id', id)
-    .select('id')
-    .single()
-  return !error && !!data
+  if (error) {
+    console.error('[updatePassword] Supabase error:', error.message, '| code:', error.code, '| id:', id)
+    return { ok: false, error: error.message }
+  }
+  return { ok: true }
 }
