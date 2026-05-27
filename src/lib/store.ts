@@ -82,21 +82,22 @@ export const useStore = create<AppStore>()(
       },
 
       reloadWorksets: async () => {
-        // Load worksets from Supabase via API (no isInitialized guard — always fetches)
+        // Reload worksets from API after a bulk operation (e.g. Recalculate Timelines).
+        // IMPORTANT: never overwrites the store with an empty array — if the API
+        // returns nothing or fails, silently keep the existing in-memory worksets.
+        // MOCK_WORKSETS fallback is intentionally omitted here; it belongs only in
+        // initialize() for the very first cold-start load.
         let worksets: Workset[] = []
         try {
           const res = await fetch('/api/worksets')
-          if (res.ok) {
-            const data = await res.json()
-            worksets = Array.isArray(data) ? data : []
-          }
+          if (!res.ok) return          // auth/server error — keep existing data
+          const data = await res.json()
+          worksets = Array.isArray(data) ? data : []
         } catch {
-          // Network error — fall back to mock data so the app is usable
-          worksets = MOCK_WORKSETS
+          return                        // network error — keep existing data
         }
 
-        // If DB is empty, seed with mock data
-        if (worksets.length === 0) worksets = MOCK_WORKSETS
+        if (worksets.length === 0) return  // empty response — keep existing data
 
         // Auto-update overdue status (local only — DB update fires separately)
         const updated = worksets.map(ws => {
@@ -114,7 +115,7 @@ export const useStore = create<AppStore>()(
         })
 
         const notifications = runNotificationEngine(updated)
-        set({ worksets: updated, notifications, isInitialized: true })
+        set({ worksets: updated, notifications })  // intentionally no isInitialized change
       },
 
       addWorkset: (data) => {
