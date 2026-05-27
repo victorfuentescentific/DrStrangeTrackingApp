@@ -1,9 +1,9 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Ban, ArrowUpRight, Trash2 } from 'lucide-react'
+import { Ban, ArrowUpRight, Trash2, CalendarClock } from 'lucide-react'
 import { Workset } from '@/lib/types'
-import { formatDate, daysUntil, daysLabel, STATUS_COLORS, STATUS_LABELS, PRIORITY_COLORS, getEffectiveRisk, cn } from '@/lib/utils'
+import { formatDate, daysUntil, daysLabel, STATUS_COLORS, STATUS_LABELS, PRIORITY_COLORS, getEffectiveRisk, expiryCountdownLabel, cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useStore } from '@/lib/store'
@@ -41,7 +41,7 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
               <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
               <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Priority</th>
               <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">ETA</th>
-              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Flags</th>
+              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Expiry</th>
               <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-20"></th>
             </tr>
           </thead>
@@ -65,10 +65,22 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
                     </span>
                   </td>
 
-                  {/* Name + locale */}
+                  {/* Name + locale + inline flags */}
                   <td className="px-4 py-3 max-w-xs">
                     <div>
-                      <p className="font-medium text-slate-800 truncate max-w-[200px]">{ws.name}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium text-slate-800 truncate max-w-[180px]">{ws.name}</p>
+                        {ws.isBlocked && (
+                          <span title="Blocked">
+                            <Ban className="w-3 h-3 text-red-500 flex-shrink-0" />
+                          </span>
+                        )}
+                        {ws.isEscalated && (
+                          <span title="Escalated">
+                            <ArrowUpRight className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-slate-400">{ws.locale} · {ws.region}</p>
                     </div>
                   </td>
@@ -111,34 +123,39 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
                     </div>
                   </td>
 
-                  {/* Flags */}
+                  {/* Expiry */}
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      {ws.isBlocked && (
-                        <span title="Blocked">
-                          <Ban className="w-4 h-4 text-red-500" />
-                        </span>
-                      )}
-                      {ws.isEscalated && (
-                        <span title="Escalated">
-                          <ArrowUpRight className="w-4 h-4 text-orange-500" />
-                        </span>
-                      )}
-                      {(() => {
-                        const effRisk = getEffectiveRisk(ws.riskLevel, ws.expirationDate, ws.status)
-                        if ((effRisk === 'high' || effRisk === 'critical') && ws.status !== 'completed') {
-                          const label = ws.expirationDate && effRisk !== ws.riskLevel
-                            ? `Risk: ${effRisk} (expiry-driven)`
-                            : `Risk: ${effRisk}`
-                          return (
-                            <span title={label}>
-                              <AlertTriangle className="w-4 h-4 text-amber-500" />
-                            </span>
-                          )
-                        }
-                        return null
-                      })()}
-                    </div>
+                    {ws.expirationDate && ws.status !== 'completed' ? (() => {
+                      const dLeft = daysUntil(ws.expirationDate)
+                      const effRisk = getEffectiveRisk(ws.riskLevel, ws.expirationDate, ws.status)
+                      const colorClass =
+                        dLeft < 0      ? 'text-red-600'
+                        : dLeft <= 7   ? 'text-red-500'
+                        : dLeft <= 14  ? 'text-orange-500'
+                        : dLeft <= 30  ? 'text-amber-600'
+                        : 'text-slate-500'
+                      return (
+                        <div className="flex items-center gap-1" title={expiryCountdownLabel(ws.expirationDate)}>
+                          <CalendarClock className={cn('w-3.5 h-3.5 flex-shrink-0', colorClass)} />
+                          <div>
+                            <p className={cn('text-xs font-medium whitespace-nowrap', colorClass)}>
+                              {formatDate(ws.expirationDate)}
+                            </p>
+                            <p className={cn('text-[10px]', colorClass)}>
+                              {dLeft < 0
+                                ? `${Math.abs(dLeft)}d overdue`
+                                : dLeft === 0 ? 'Today'
+                                : `${dLeft}d left`}
+                              {effRisk !== ws.riskLevel && (
+                                <span className="ml-1 opacity-70">↑{effRisk}</span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })() : (
+                      <span className="text-[11px] text-slate-300">—</span>
+                    )}
                   </td>
 
                   {/* Actions */}

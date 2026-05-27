@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { Search, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { Button } from '@/components/ui/Button'
@@ -46,7 +47,13 @@ const RISKS: { value: RiskLevel | 'all'; label: string }[] = [
 ]
 
 export function WorksetFilters() {
-  const { filters, setFilter, clearFilters } = useStore()
+  const { filters, setFilter, clearFilters, worksets } = useStore()
+
+  // Derive locale options from worksets already in the store — no pre-defined list
+  const localeOptions = useMemo(
+    () => [...new Set(worksets.map(w => w.locale))].filter(Boolean).sort(),
+    [worksets],
+  )
 
   const hasActiveFilters =
     filters.search || filters.workflow !== 'all' || filters.region !== 'all' || filters.locale ||
@@ -142,13 +149,16 @@ export function WorksetFilters() {
           {RISKS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
         </select>
 
-        <input
-          type="text"
-          placeholder="Locale (e.g. de_DE)"
+        <select
           value={filters.locale}
           onChange={e => setFilter('locale', e.target.value)}
-          className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500 w-36"
-        />
+          className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+        >
+          <option value="">All Locales</option>
+          {localeOptions.map(l => (
+            <option key={l} value={l}>{l}</option>
+          ))}
+        </select>
       </div>
     </div>
   )
