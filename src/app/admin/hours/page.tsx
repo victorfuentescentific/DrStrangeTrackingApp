@@ -3,21 +3,35 @@
 import { useEffect, useState, useMemo } from 'react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { cn } from '@/lib/utils'
-import type { Submission } from '@/lib/submissions'
 import { Users, Clock, TrendingUp, CalendarDays } from 'lucide-react'
 
-// ─── Phase config ─────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-type Phase = '1P+IAA' | '2P' | 'PHI' | 'Review'
-
-const PHASE_COLORS: Record<Phase, { bg: string; text: string; hex: string }> = {
-  '1P+IAA': { bg: 'bg-blue-100',   text: 'text-blue-700',   hex: '#3b82f6' },
-  '2P':     { bg: 'bg-orange-100', text: 'text-orange-700', hex: '#f97316' },
-  'PHI':    { bg: 'bg-green-100',  text: 'text-green-700',  hex: '#22c55e' },
-  'Review': { bg: 'bg-slate-100',  text: 'text-slate-600',  hex: '#94a3b8' },
+interface DailySubmissionRow {
+  id: string
+  userId: string
+  userName: string
+  userLocale: string | null
+  date: string
+  locale: string
+  productionHours: number
+  hasNonProduction: boolean
+  totalNonProductionHours: number
+  npHours2pass: number
+  npHoursPhi: number
+  npHoursTraining: number
+  npHoursReview: number
+  npHoursOther: number
+  totalWorkingHours: number
+  remarks: string
+  miscCost: number | null
+  invoiceUrls: string[]
+  submittedAt: string
 }
 
-const PHASES: Phase[] = ['1P+IAA', '2P', 'PHI', 'Review']
+// ─── NP breakdown labels ─────────────────────────────────────────────────────
+
+const NP_KEYS = ['2Pass', 'PHI', 'Training', 'Review', 'Other'] as const
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -81,14 +95,15 @@ interface PersonRow {
   userName: string
   locale: string
   totalHours: number
-  byPhase: Record<Phase, number>
+  productionHours: number
+  npHours: number
   lastDate: string
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdminHoursPage() {
-  const [submissions, setSubmissions] = useState<Submission[]>([])
+  const [submissions, setSubmissions] = useState<DailySubmissionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<DateFilter>('this-week')
@@ -97,7 +112,7 @@ export default function AdminHoursPage() {
     async function load() {
       try {
         const [subRes, meRes] = await Promise.all([
-          fetch('/api/submissions'),
+          fetch('/api/daily-submissions'),
           fetch('/api/auth/me'),
         ])
         if (meRes.status === 401) {
@@ -113,7 +128,7 @@ export default function AdminHoursPage() {
           setError('Failed to load submissions.')
           return
         }
-        const data: Submission[] = await subRes.json()
+        const data: DailySubmissionRow[] = await subRes.json()
         setSubmissions(data)
       } catch {
         setError('Network error — could not load data.')
@@ -132,7 +147,7 @@ export default function AdminHoursPage() {
 
   // Summary stats
   const totalHours = useMemo(
-    () => filtered.reduce((acc, s) => acc + s.hours, 0),
+    () => filtered.reduce((acc, s) => acc + s.totalWorkingHours, 0),
     [filtered],
   )
 
@@ -156,26 +171,32 @@ export default function AdminHoursPage() {
           userName: s.userName,
           locale: s.locale,
           totalHours: 0,
-          byPhase: { '1P+IAA': 0, '2P': 0, 'PHI': 0, 'Review': 0 },
+          productionHours: 0,
+          npHours: 0,
           lastDate: s.date,
         })
       }
       const row = map.get(s.userId)!
-      row.totalHours += s.hours
-      row.byPhase[s.phase as Phase] = (row.byPhase[s.phase as Phase] || 0) + s.hours
+      row.totalHours     += s.totalWorkingHours
+      row.productionHours += s.productionHours
+      row.npHours        += s.totalNonProductionHours
       if (s.date > row.lastDate) row.lastDate = s.date
     }
     return [...map.values()].sort((a, b) => b.totalHours - a.totalHours)
   }, [filtered])
 
-  // Phase totals for stacked bar
-  const phaseTotals = useMemo(() => {
-    const totals: Record<Phase, number> = { '1P+IAA': 0, '2P': 0, 'PHI': 0, 'Review': 0 }
-    for (const s of filtered) {
-      totals[s.phase as Phase] = (totals[s.phase as Phase] || 0) + s.hours
-    }
-    return totals
-  }, [filtered])
+  // NP breakdown totals
+  const npTotals = useMemo(() => ({
+    '2Pass':    filtered.reduce((acc, s) => acc + s.npHours2pass,    0),
+    'PHI':      filtered.reduce((acc, s) => acc + s.npHoursPhi,      0),
+    'Training': filtered.reduce((acc, s) => acc + s.npHoursTraining, 0),
+    'Review':   filtered.reduce((acc, s) => acc + s.npHoursReview,   0),
+    'Other':    filtered.reduce((acc, s) => acc + s.npHoursOther,    0),
+  }), [filtered])
+
+  // Production vs NP totals for stacked bar
+  const prodTotal = useMemo(() => filtered.reduce((acc, s) => acc + s.productionHours, 0), [filtered])
+  const npTotal   = useMemo(() => filtered.reduce((acc, s) => acc + s.totalNonProductionHours, 0), [filtered])
 
   // Recent submissions (last 20, reverse-chronological)
   const recentSubmissions = useMemo(
@@ -260,26 +281,34 @@ export default function AdminHoursPage() {
                 />
               </div>
 
-              {/* Section C — Hours by Phase stacked bar */}
+              {/* Section C — Prod vs NP stacked bar */}
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                <h2 className="text-sm font-semibold text-slate-700 mb-4">Hours by Phase</h2>
-                <PhaseStackedBar phaseTotals={phaseTotals} totalHours={totalHours} />
+                <h2 className="text-sm font-semibold text-slate-700 mb-4">Hours Breakdown</h2>
+                <ProdNpBar prodTotal={prodTotal} npTotal={npTotal} totalHours={totalHours} />
                 <div className="flex flex-wrap gap-4 mt-3">
-                  {PHASES.map((p) => (
-                    <div key={p} className="flex items-center gap-1.5">
-                      <span
-                        className="w-2.5 h-2.5 rounded-sm inline-block"
-                        style={{ backgroundColor: PHASE_COLORS[p].hex }}
-                      />
-                      <span className="text-xs text-slate-500">
-                        {p}{' '}
-                        <span className="font-medium text-slate-700">
-                          {phaseTotals[p].toFixed(phaseTotals[p] % 1 === 0 ? 0 : 1)}h
-                        </span>
-                      </span>
-                    </div>
-                  ))}
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block bg-brand-500" />
+                    <span className="text-xs text-slate-500">Production <span className="font-medium text-slate-700">{prodTotal.toFixed(1)}h</span></span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block bg-amber-400" />
+                    <span className="text-xs text-slate-500">Non-Production <span className="font-medium text-slate-700">{npTotal.toFixed(1)}h</span></span>
+                  </div>
                 </div>
+                {/* NP sub-breakdown */}
+                {npTotal > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {NP_KEYS.map(k => {
+                      const v = npTotals[k]
+                      if (v === 0) return null
+                      return (
+                        <span key={k} className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">
+                          {k}: {v.toFixed(1)}h
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Section B — By-person breakdown table */}
@@ -293,8 +322,9 @@ export default function AdminHoursPage() {
                       <tr className="border-b border-slate-100 bg-slate-50">
                         <Th>Name</Th>
                         <Th>Locale</Th>
-                        <Th align="right">Total Hours</Th>
-                        <Th>Phase Breakdown</Th>
+                        <Th align="right">Prod h</Th>
+                        <Th align="right">NP h</Th>
+                        <Th align="right">Total h</Th>
                         <Th>Last Submission</Th>
                       </tr>
                     </thead>
@@ -306,29 +336,14 @@ export default function AdminHoursPage() {
                         >
                           <td className="px-4 py-3 font-medium text-slate-800">{row.userName}</td>
                           <td className="px-4 py-3 text-slate-500 font-mono text-xs">{row.locale}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-800">
-                            {row.totalHours % 1 === 0
-                              ? row.totalHours
-                              : row.totalHours.toFixed(1)}h
+                          <td className="px-4 py-3 text-right text-slate-700">
+                            {row.productionHours % 1 === 0 ? row.productionHours : row.productionHours.toFixed(1)}h
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap gap-1">
-                              {PHASES.filter((p) => row.byPhase[p] > 0).map((p) => (
-                                <span
-                                  key={p}
-                                  className={cn(
-                                    'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium',
-                                    PHASE_COLORS[p].bg,
-                                    PHASE_COLORS[p].text,
-                                  )}
-                                >
-                                  {p} ·{' '}
-                                  {row.byPhase[p] % 1 === 0
-                                    ? row.byPhase[p]
-                                    : row.byPhase[p].toFixed(1)}h
-                                </span>
-                              ))}
-                            </div>
+                          <td className="px-4 py-3 text-right text-amber-600">
+                            {row.npHours % 1 === 0 ? row.npHours : row.npHours.toFixed(1)}h
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-800">
+                            {row.totalHours % 1 === 0 ? row.totalHours : row.totalHours.toFixed(1)}h
                           </td>
                           <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
                             <span className="flex items-center gap-1.5">
@@ -358,11 +373,10 @@ export default function AdminHoursPage() {
                         <Th>Date</Th>
                         <Th>Name</Th>
                         <Th>Locale</Th>
-                        <Th>Workflow</Th>
-                        <Th>Phase</Th>
-                        <Th align="right">Hours</Th>
-                        <Th>Workset</Th>
-                        <Th>Notes</Th>
+                        <Th align="right">Prod h</Th>
+                        <Th align="right">NP h</Th>
+                        <Th align="right">Total h</Th>
+                        <Th>Remarks</Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -383,26 +397,17 @@ export default function AdminHoursPage() {
                           <td className="px-4 py-2.5 text-slate-500 font-mono text-xs">
                             {s.locale}
                           </td>
-                          <td className="px-4 py-2.5 text-slate-600 text-xs">{s.workflow}</td>
-                          <td className="px-4 py-2.5">
-                            <span
-                              className={cn(
-                                'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium',
-                                PHASE_COLORS[s.phase as Phase]?.bg ?? 'bg-slate-100',
-                                PHASE_COLORS[s.phase as Phase]?.text ?? 'text-slate-600',
-                              )}
-                            >
-                              {s.phase}
-                            </span>
+                          <td className="px-4 py-2.5 text-right text-slate-700 text-xs">
+                            {s.productionHours % 1 === 0 ? s.productionHours : s.productionHours.toFixed(1)}h
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-amber-600 text-xs">
+                            {s.totalNonProductionHours % 1 === 0 ? s.totalNonProductionHours : s.totalNonProductionHours.toFixed(1)}h
                           </td>
                           <td className="px-4 py-2.5 text-right font-semibold text-slate-700 text-xs">
-                            {s.hours % 1 === 0 ? s.hours : s.hours.toFixed(1)}h
+                            {s.totalWorkingHours % 1 === 0 ? s.totalWorkingHours : s.totalWorkingHours.toFixed(1)}h
                           </td>
-                          <td className="px-4 py-2.5 text-slate-400 text-xs max-w-[120px] truncate">
-                            {s.worksetName ?? s.worksetId ?? '—'}
-                          </td>
-                          <td className="px-4 py-2.5 text-slate-400 text-xs max-w-[160px] truncate">
-                            {s.notes || '—'}
+                          <td className="px-4 py-2.5 text-slate-400 text-xs max-w-[200px] truncate">
+                            {s.remarks || '—'}
                           </td>
                         </tr>
                       ))}
@@ -454,31 +459,34 @@ function SummaryCard({
   )
 }
 
-function PhaseStackedBar({
-  phaseTotals,
+function ProdNpBar({
+  prodTotal,
+  npTotal,
   totalHours,
 }: {
-  phaseTotals: Record<Phase, number>
+  prodTotal: number
+  npTotal: number
   totalHours: number
 }) {
   if (totalHours === 0) return null
-
+  const prodPct = (prodTotal / totalHours) * 100
+  const npPct   = (npTotal  / totalHours) * 100
   return (
     <div className="flex w-full h-6 rounded-full overflow-hidden gap-px">
-      {PHASES.filter((p) => phaseTotals[p] > 0).map((p) => {
-        const pct = (phaseTotals[p] / totalHours) * 100
-        return (
-          <div
-            key={p}
-            title={`${p}: ${phaseTotals[p].toFixed(1)}h (${pct.toFixed(1)}%)`}
-            className="h-full transition-all"
-            style={{
-              width: `${pct}%`,
-              backgroundColor: PHASE_COLORS[p].hex,
-            }}
-          />
-        )
-      })}
+      {prodTotal > 0 && (
+        <div
+          title={`Production: ${prodTotal.toFixed(1)}h (${prodPct.toFixed(1)}%)`}
+          className="h-full bg-brand-500 transition-all"
+          style={{ width: `${prodPct}%` }}
+        />
+      )}
+      {npTotal > 0 && (
+        <div
+          title={`Non-Production: ${npTotal.toFixed(1)}h (${npPct.toFixed(1)}%)`}
+          className="h-full bg-amber-400 transition-all"
+          style={{ width: `${npPct}%` }}
+        />
+      )}
     </div>
   )
 }

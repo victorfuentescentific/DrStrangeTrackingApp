@@ -1,13 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, FormEvent } from 'react'
+import { useState, useEffect, useCallback, useRef, FormEvent, ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Loader2, CheckCircle2, Minus, Plus, LogOut,
-  ClipboardList, PenLine, Pencil, Trash2, X,
+  ClipboardList, PenLine, Pencil, Trash2, X, Upload, FileText, AlertCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { WorkflowType } from '@/lib/types'
 import { SessionUser } from '@/lib/auth'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -15,23 +14,9 @@ import { SessionUser } from '@/lib/auth'
 const LOCALES = ['en_GB', 'de_DE', 'nl_NL', 'fr_FR', 'da_DK', 'nb_NO'] as const
 type Locale = (typeof LOCALES)[number]
 
-type Phase = '1P+IAA' | '2P' | 'PHI' | 'Review'
+const MAX_HOURS = 8
 
-const PHASES: { key: Phase; label: string; dot: string; ring: string; bg: string; text: string }[] = [
-  { key: '1P+IAA', label: '1P + IAA', dot: 'bg-blue-500',   ring: 'ring-blue-400',   bg: 'bg-blue-50',   text: 'text-blue-700' },
-  { key: '2P',     label: '2P',       dot: 'bg-orange-400', ring: 'ring-orange-300', bg: 'bg-orange-50', text: 'text-orange-700' },
-  { key: 'PHI',    label: 'PHI',      dot: 'bg-green-500',  ring: 'ring-green-400',  bg: 'bg-green-50',  text: 'text-green-700' },
-  { key: 'Review', label: 'Review',   dot: 'bg-slate-400',  ring: 'ring-slate-300',  bg: 'bg-slate-100', text: 'text-slate-600' },
-]
-
-const WORKFLOWS: WorkflowType[] = ['DAX', 'DMO', 'Scribing']
-
-const PHASE_COLORS: Record<Phase, string> = {
-  '1P+IAA': 'bg-blue-100 text-blue-700',
-  '2P':     'bg-orange-100 text-orange-700',
-  'PHI':    'bg-green-100 text-green-700',
-  'Review': 'bg-slate-100 text-slate-600',
-}
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function todayISO() {
   return new Date().toISOString().split('T')[0]
@@ -49,21 +34,31 @@ function fmtDate(d: string) {
   })
 }
 
+function round1(v: number) {
+  return Math.round(v * 10) / 10
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface SubmissionRow {
+interface DailySubmissionRow {
   id: string
   userId: string
   userName: string
   userLocale: string | null
   date: string
   locale: string
-  workflow: WorkflowType
-  phase: Phase
-  worksetId: string | null
-  worksetName: string | null
-  hours: number
-  notes: string
+  productionHours: number
+  hasNonProduction: boolean
+  totalNonProductionHours: number
+  npHours2pass: number
+  npHoursPhi: number
+  npHoursTraining: number
+  npHoursReview: number
+  npHoursOther: number
+  totalWorkingHours: number
+  remarks: string
+  miscCost: number | null
+  invoiceUrls: string[]
   submittedAt: string
 }
 
@@ -79,47 +74,170 @@ interface UserSummary {
 interface SuccessData {
   date: string
   locale: string
-  workflow: WorkflowType
-  phase: Phase
-  hours: number
+  productionHours: number
+  totalNonProductionHours: number
+  totalWorkingHours: number
+  remarks: string
   forName?: string
 }
 
-// ─── HoursInput ───────────────────────────────────────────────────────────────
+// ─── NumInput ─────────────────────────────────────────────────────────────────
+// Compact +/- number input. Step defaults to 0.5.
 
-function HoursInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const segments = 8
-  const filled = Math.round((value / 8) * segments)
+interface NumInputProps {
+  value: number
+  onChange: (v: number) => void
+  min?: number
+  max?: number
+  step?: number
+  disabled?: boolean
+}
 
+function NumInput({ value, onChange, min = 0, max = 8, step = 0.5, disabled = false }: NumInputProps) {
   function decrement() {
-    if (value > 0.5) onChange(Math.round((value - 0.5) * 10) / 10)
+    const next = round1(value - step)
+    if (next >= min) onChange(next)
   }
   function increment() {
-    if (value < 8) onChange(Math.round((value + 0.5) * 10) / 10)
+    const next = round1(value + step)
+    if (next <= max) onChange(next)
+  }
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    const v = parseFloat(e.target.value)
+    if (!isNaN(v)) onChange(Math.min(max, Math.max(min, round1(v))))
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={decrement}
+        disabled={disabled || value <= min}
+        className="w-7 h-7 rounded-md border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+      >
+        <Minus className="w-3.5 h-3.5" />
+      </button>
+      <input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={handleChange}
+        disabled={disabled}
+        className="w-20 text-center px-2 py-1 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 tabular-nums"
+      />
+      <button
+        type="button"
+        onClick={increment}
+        disabled={disabled || value >= max}
+        className="w-7 h-7 rounded-md border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+      >
+        <Plus className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  )
+}
+
+// ─── TotalHoursDisplay ────────────────────────────────────────────────────────
+
+function TotalHoursDisplay({ total }: { total: number }) {
+  const pct = Math.min((total / MAX_HOURS) * 100, 100)
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline gap-1">
+        <span className="text-3xl font-bold text-slate-800 tabular-nums">
+          {total % 1 === 0 ? `${total}.0` : total}
+        </span>
+        <span className="text-base text-slate-500">/ {MAX_HOURS} h</span>
+      </div>
+      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-brand-500 rounded-full transition-all duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-xs text-slate-400">Auto-calculated: Production + Non-Production</p>
+    </div>
+  )
+}
+
+// ─── FileUpload ───────────────────────────────────────────────────────────────
+
+const ALLOWED_ACCEPT = [
+  '.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf',
+  'image/*', 'video/*', 'audio/*',
+].join(',')
+
+function formatBytes(b: number): string {
+  if (b < 1024) return `${b} B`
+  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`
+  return `${(b / 1048576).toFixed(1)} MB`
+}
+
+interface FileUploadProps {
+  files: File[]
+  onChange: (files: File[]) => void
+}
+
+function FileUpload({ files, onChange }: FileUploadProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = useState(false)
+
+  function addFiles(newFiles: FileList | null) {
+    if (!newFiles) return
+    const arr = Array.from(newFiles)
+    const combined = [...files, ...arr].slice(0, 5)
+    onChange(combined)
+  }
+
+  function removeFile(i: number) {
+    onChange(files.filter((_, idx) => idx !== i))
   }
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-4">
-        <button type="button" onClick={decrement} disabled={value <= 0.5}
-          className="w-9 h-9 rounded-full border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-          <Minus className="w-4 h-4" />
-        </button>
-        <span className="text-4xl font-bold text-slate-800 tabular-nums w-20 text-center">
-          {value % 1 === 0 ? `${value}.0` : value}
-          <span className="text-base font-normal text-slate-500 ml-1">h</span>
-        </span>
-        <button type="button" onClick={increment} disabled={value >= 8}
-          className="w-9 h-9 rounded-full border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-          <Plus className="w-4 h-4" />
-        </button>
+      <div
+        onClick={() => inputRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); setDragging(true) }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files) }}
+        className={cn(
+          'border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors',
+          dragging ? 'border-brand-400 bg-brand-50' : 'border-slate-200 hover:border-slate-300 bg-slate-50',
+        )}
+      >
+        <Upload className="w-6 h-6 text-slate-400 mx-auto mb-2" />
+        <p className="text-sm text-slate-600 font-medium">Click to upload or drag & drop</p>
+        <p className="text-xs text-slate-400 mt-0.5">Word, Excel, PPT, PDF, Image, Video, Audio · up to 5 files · 10 MB each</p>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept={ALLOWED_ACCEPT}
+          className="hidden"
+          onChange={e => addFiles(e.target.files)}
+        />
       </div>
-      <div className="flex gap-1">
-        {Array.from({ length: segments }).map((_, i) => (
-          <div key={i} className={cn('h-2 flex-1 rounded-full transition-colors', i < filled ? 'bg-brand-500' : 'bg-slate-200')} />
-        ))}
-      </div>
-      <p className="text-xs text-slate-400">0.5 – 8 hours · use +/- to adjust</p>
+
+      {files.length > 0 && (
+        <ul className="space-y-1.5">
+          {files.map((f, i) => (
+            <li key={i} className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2">
+              <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+              <span className="text-sm text-slate-700 flex-1 truncate">{f.name}</span>
+              <span className="text-xs text-slate-400 shrink-0">{formatBytes(f.size)}</span>
+              <button
+                type="button"
+                onClick={() => removeFile(i)}
+                className="p-0.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -127,23 +245,51 @@ function HoursInput({ value, onChange }: { value: number; onChange: (v: number) 
 // ─── SuccessCard ──────────────────────────────────────────────────────────────
 
 function SuccessCard({ data, onAnother }: { data: SuccessData; onAnother: () => void }) {
-  const phaseInfo = PHASES.find((p) => p.key === data.phase)!
   return (
     <div className="rounded-xl border border-green-200 bg-green-50 p-6 text-center space-y-4">
       <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto" />
       <div>
-        <p className="font-semibold text-green-800 text-lg">Hours logged successfully</p>
+        <p className="font-semibold text-green-800 text-lg">Hours submitted successfully</p>
         {data.forName && (
           <p className="text-sm text-green-600 mt-0.5">Submitted for {data.forName}</p>
         )}
-        <p className="text-sm text-green-700 mt-1">
-          {data.date} · {data.locale} · {data.workflow} · {phaseInfo.label} · {data.hours}h
-        </p>
+        <div className="text-sm text-green-700 mt-2 space-y-0.5">
+          <p>{fmtDate(data.date)} · {data.locale}</p>
+          <p>Production: {data.productionHours}h · NP: {data.totalNonProductionHours}h · Total: {data.totalWorkingHours}h</p>
+          {data.remarks && (
+            <p className="text-xs text-green-600 mt-1 italic line-clamp-2">"{data.remarks}"</p>
+          )}
+        </div>
       </div>
-      <button type="button" onClick={onAnother}
-        className="px-4 py-2 text-sm font-medium bg-white border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors">
+      <button
+        type="button"
+        onClick={onAnother}
+        className="px-4 py-2 text-sm font-medium bg-white border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors"
+      >
         Submit another day
       </button>
+    </div>
+  )
+}
+
+// ─── SectionCard ─────────────────────────────────────────────────────────────
+
+function SectionCard({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn('bg-white rounded-xl border border-slate-200 shadow-sm px-5 py-4', className)}>
+      {children}
+    </div>
+  )
+}
+
+function FieldLabel({ label, hint, required }: { label: string; hint?: string; required?: boolean }) {
+  return (
+    <div className="mb-1.5">
+      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      {hint && <p className="text-[11px] text-slate-400 mt-0.5">{hint}</p>}
     </div>
   )
 }
@@ -151,195 +297,437 @@ function SuccessCard({ data, onAnother }: { data: SuccessData; onAnother: () => 
 // ─── HoursForm ────────────────────────────────────────────────────────────────
 
 interface HoursFormProps {
-  initialLocale: Locale
+  session: SessionUser
   /** When set (admin mode), submits on behalf of this user */
   forUser?: { id: string; name: string; locale: string | null }
 }
 
-function HoursForm({ initialLocale, forUser }: HoursFormProps) {
-  const [date,       setDate]       = useState(todayISO())
-  const [locale,     setLocale]     = useState<Locale>(initialLocale)
-  const [workflow,   setWorkflow]   = useState<WorkflowType>('DAX')
-  const [phase,      setPhase]      = useState<Phase>('1P+IAA')
-  const [workset,    setWorkset]    = useState('')
-  const [hours,      setHours]      = useState(4)
-  const [notes,      setNotes]      = useState('')
+function HoursForm({ session, forUser }: HoursFormProps) {
+  const effectiveLocale = forUser?.locale ?? session.locale ?? 'en_GB'
+  const isFreelancer = session.role === 'freelancer'
+
+  // Form state
+  const [date,                    setDate]                    = useState(todayISO())
+  const [locale,                  setLocale]                  = useState<string>(effectiveLocale)
+  const [productionHours,         setProductionHours]         = useState(0)
+  const [hasNonProduction,        setHasNonProduction]        = useState<boolean | null>(null)
+  const [totalNonProductionHours, setTotalNonProductionHours] = useState(0)
+  const [npHours2pass,            setNpHours2pass]            = useState(0)
+  const [npHoursPhi,              setNpHoursPhi]              = useState(0)
+  const [npHoursTraining,         setNpHoursTraining]         = useState(0)
+  const [npHoursReview,           setNpHoursReview]           = useState(0)
+  const [npHoursOther,            setNpHoursOther]            = useState(0)
+  const [remarks,                 setRemarks]                 = useState('')
+  const [miscCost,                setMiscCost]                = useState<string>('')
+  const [invoiceFiles,            setInvoiceFiles]            = useState<File[]>([])
+
   const [submitting, setSubmitting] = useState(false)
   const [error,      setError]      = useState('')
   const [success,    setSuccess]    = useState<SuccessData | null>(null)
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSubmitting(true)
-    setError('')
+  // Derived
+  const npSubtotal = round1(npHours2pass + npHoursPhi + npHoursTraining + npHoursReview + npHoursOther)
+  const npMatch    = Math.abs(npSubtotal - totalNonProductionHours) < 0.001
+  const totalWorkingHours = round1(productionHours + (hasNonProduction ? totalNonProductionHours : 0))
 
-    const body: Record<string, unknown> = {
-      date, locale, workflow, phase,
-      workset: workset.trim() || null,
-      hours,
-      notes: notes.trim() || null,
-    }
-
-    // Admin submitting for someone else — pass userId / userName in body
-    if (forUser) {
-      body.userId     = forUser.id
-      body.userName   = forUser.name
-      body.userLocale = forUser.locale
-    }
-
-    const res = await fetch('/api/submissions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-    setSubmitting(false)
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      setError(data.error ?? 'Submission failed. Please try again.')
-      return
-    }
-
-    setSuccess({ date, locale, workflow, phase, hours, forName: forUser?.name })
-  }
+  // Reset locale when forUser changes
+  useEffect(() => {
+    setLocale(forUser?.locale ?? session.locale ?? 'en_GB')
+  }, [forUser, session.locale])
 
   function resetForm() {
     setDate(todayISO())
-    setWorkflow('DAX')
-    setPhase('1P+IAA')
-    setWorkset('')
-    setHours(4)
-    setNotes('')
+    setLocale(forUser?.locale ?? session.locale ?? 'en_GB')
+    setProductionHours(0)
+    setHasNonProduction(null)
+    setTotalNonProductionHours(0)
+    setNpHours2pass(0)
+    setNpHoursPhi(0)
+    setNpHoursTraining(0)
+    setNpHoursReview(0)
+    setNpHoursOther(0)
+    setRemarks('')
+    setMiscCost('')
+    setInvoiceFiles([])
     setError('')
     setSuccess(null)
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+
+    // Validate
+    const errs: string[] = []
+
+    if (!date) errs.push('Date is required.')
+    if (hasNonProduction === null) errs.push('Please answer whether you have non-production hours.')
+
+    if (hasNonProduction) {
+      if (totalNonProductionHours <= 0) errs.push('Total non-production hours must be > 0.')
+      if (!npMatch) errs.push(`Sub-category breakdown (${npSubtotal}h) must equal declared NP total (${totalNonProductionHours}h).`)
+    }
+
+    if (!remarks.trim()) errs.push('Remarks are required.')
+
+    const parsedMiscCost = miscCost !== '' ? parseFloat(miscCost) : null
+    if (parsedMiscCost !== null && (isNaN(parsedMiscCost) || parsedMiscCost < 0)) {
+      errs.push('Miscellaneous cost must be a valid non-negative number.')
+    }
+
+    if (errs.length > 0) {
+      setError(errs.join(' '))
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      // Step 1: Upload files if any
+      let invoiceUrls: string[] = []
+      if (invoiceFiles.length > 0) {
+        const fd = new FormData()
+        invoiceFiles.forEach(f => fd.append('files', f))
+        const uploadRes = await fetch('/api/daily-submissions/upload', { method: 'POST', body: fd })
+        if (!uploadRes.ok) {
+          const uploadData = await uploadRes.json().catch(() => ({}))
+          setError((uploadData as { error?: string }).error ?? 'File upload failed.')
+          setSubmitting(false)
+          return
+        }
+        const uploadData = await uploadRes.json() as { urls: string[] }
+        invoiceUrls = uploadData.urls
+      }
+
+      // Step 2: Submit form data
+      const effectiveNP = hasNonProduction ? totalNonProductionHours : 0
+      const body: Record<string, unknown> = {
+        date,
+        locale,
+        productionHours,
+        hasNonProduction: !!hasNonProduction,
+        totalNonProductionHours: effectiveNP,
+        npHours2pass:    hasNonProduction ? npHours2pass    : 0,
+        npHoursPhi:      hasNonProduction ? npHoursPhi      : 0,
+        npHoursTraining: hasNonProduction ? npHoursTraining : 0,
+        npHoursReview:   hasNonProduction ? npHoursReview   : 0,
+        npHoursOther:    hasNonProduction ? npHoursOther    : 0,
+        totalWorkingHours: round1(productionHours + effectiveNP),
+        remarks: remarks.trim(),
+        miscCost: parsedMiscCost,
+        invoiceUrls,
+      }
+
+      if (forUser) {
+        body.userId     = forUser.id
+        body.userName   = forUser.name
+        body.userLocale = forUser.locale
+      }
+
+      const res = await fetch('/api/daily-submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const d = data as { error?: string; details?: string[] }
+        setError(d.details?.join(' ') ?? d.error ?? 'Submission failed. Please try again.')
+        setSubmitting(false)
+        return
+      }
+
+      setSuccess({
+        date,
+        locale,
+        productionHours,
+        totalNonProductionHours: effectiveNP,
+        totalWorkingHours: round1(productionHours + effectiveNP),
+        remarks: remarks.trim(),
+        forName: forUser?.name,
+      })
+    } catch {
+      setError('An unexpected error occurred. Please try again.')
+    }
+
+    setSubmitting(false)
   }
 
   if (success) return <SuccessCard data={success} onAnother={resetForm} />
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">
+    <form onSubmit={handleSubmit} className="space-y-4">
 
-      {/* ── Date ── */}
-      <div className="px-5 py-4 space-y-1.5">
-        <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">Work date</label>
-        <input type="date" required value={date} max={todayISO()} onChange={e => setDate(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800" />
-      </div>
+      {/* Q1 Name */}
+      <SectionCard>
+        <FieldLabel label="1. Name" />
+        <p className="text-sm font-medium text-slate-800">
+          {forUser ? forUser.name : session.name}
+        </p>
+        {isFreelancer && <p className="text-[11px] text-slate-400 mt-0.5">From your account</p>}
+      </SectionCard>
 
-      {/* ── Locale ── */}
-      <div className="px-5 py-4 space-y-1.5">
-        <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">Locale</label>
-        <select value={locale} onChange={e => setLocale(e.target.value as Locale)}
-          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 bg-white">
-          {LOCALES.map(l => <option key={l} value={l}>{l}</option>)}
-        </select>
-      </div>
+      {/* Q2 Locale */}
+      <SectionCard>
+        <FieldLabel label="2. Locale" />
+        {isFreelancer ? (
+          <p className="text-sm font-medium text-slate-800">{locale}</p>
+        ) : (
+          <select
+            value={locale}
+            onChange={e => setLocale(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 bg-white"
+          >
+            {LOCALES.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        )}
+      </SectionCard>
 
-      {/* ── Workflow ── */}
-      <div className="px-5 py-4 space-y-1.5">
-        <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">Workflow</label>
-        <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-          {WORKFLOWS.map(w => (
-            <button key={w} type="button" onClick={() => setWorkflow(w)}
-              className={cn('flex-1 py-2 text-sm font-medium transition-colors',
-                workflow === w ? 'bg-brand-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-50')}>
-              {w}
+      {/* Q3 Date */}
+      <SectionCard>
+        <FieldLabel label="3. Date" required />
+        <input
+          type="date"
+          required
+          value={date}
+          max={todayISO()}
+          onChange={e => setDate(e.target.value)}
+          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800"
+        />
+      </SectionCard>
+
+      {/* Q5 Production Hours */}
+      <SectionCard>
+        <FieldLabel
+          label="4. Production Hours"
+          hint="Transcription Workset / Report / IAA hours"
+          required
+        />
+        <NumInput value={productionHours} onChange={setProductionHours} min={0} max={8} step={0.5} />
+      </SectionCard>
+
+      {/* Q6 Non-Production toggle */}
+      <SectionCard>
+        <FieldLabel
+          label="5. Any non-production hours today?"
+          hint="Training, meetings, PHI, waiting for worksets, admin"
+          required
+        />
+        <div className="flex gap-3 mt-1">
+          {([true, false] as const).map(val => (
+            <button
+              key={String(val)}
+              type="button"
+              onClick={() => setHasNonProduction(val)}
+              className={cn(
+                'flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all',
+                hasNonProduction === val
+                  ? val
+                    ? 'bg-brand-500 border-brand-500 text-white'
+                    : 'bg-slate-700 border-slate-700 text-white'
+                  : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300',
+              )}
+            >
+              {val ? 'Yes' : 'No'}
             </button>
           ))}
         </div>
-      </div>
+      </SectionCard>
 
-      {/* ── Phase ── */}
-      <div className="px-5 py-4 space-y-1.5">
-        <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">Phase</label>
-        <div className="flex gap-2 flex-wrap">
-          {PHASES.map(p => {
-            const selected = phase === p.key
-            return (
-              <button key={p.key} type="button" onClick={() => setPhase(p.key)}
-                className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all',
-                  selected
-                    ? cn(p.bg, p.text, 'border-transparent ring-2', p.ring)
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300')}>
-                <span className={cn('w-2 h-2 rounded-full', p.dot)} />
-                {p.label}
-              </button>
-            )
-          })}
+      {/* Q7-Q12 Non-production breakdown (conditional) */}
+      {hasNonProduction === true && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-4">
+          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Non-Production Breakdown</p>
+
+          {/* Q7 Total NP hours */}
+          <div>
+            <FieldLabel
+              label="6. Total Non-Production Hours"
+              required
+            />
+            <NumInput
+              value={totalNonProductionHours}
+              onChange={setTotalNonProductionHours}
+              min={0}
+              max={8}
+              step={0.5}
+            />
+            {/* Live sub-total counter */}
+            <div className={cn(
+              'mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+              npMatch ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700',
+            )}>
+              {!npMatch && <AlertCircle className="w-3.5 h-3.5" />}
+              Sub-categories: {npSubtotal} / {totalNonProductionHours} h
+              {npMatch && ' ✓'}
+            </div>
+          </div>
+
+          {/* Q8 2Pass */}
+          <div>
+            <FieldLabel label="7. 2Pass Hours" hint="Enter 0 if not applicable" />
+            <NumInput value={npHours2pass} onChange={setNpHours2pass} min={0} max={8} step={0.5} />
+          </div>
+
+          {/* Q9 PHI */}
+          <div>
+            <FieldLabel label="8. PHI Hours" hint="Enter 0 if not applicable" />
+            <NumInput value={npHoursPhi} onChange={setNpHoursPhi} min={0} max={8} step={0.5} />
+          </div>
+
+          {/* Q10 Training */}
+          <div>
+            <FieldLabel label="9. Training / Evaluation Hours" hint="Enter 0 if not applicable" />
+            <NumInput value={npHoursTraining} onChange={setNpHoursTraining} min={0} max={8} step={0.5} />
+          </div>
+
+          {/* Q11 Review */}
+          <div>
+            <FieldLabel label="10. Review Hours" hint="Enter 0 if not applicable" />
+            <NumInput value={npHoursReview} onChange={setNpHoursReview} min={0} max={8} step={0.5} />
+          </div>
+
+          {/* Q12 Other */}
+          <div>
+            <FieldLabel
+              label="11. Other Non-Production Hours"
+              hint="DMO Refresher / Waiting for worksets / Meetings / IT issues. Describe in Remarks."
+            />
+            <NumInput value={npHoursOther} onChange={setNpHoursOther} min={0} max={8} step={0.5} />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* ── Workset (optional) ── */}
-      <div className="px-5 py-4 space-y-1.5">
-        <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">
-          Workset <span className="normal-case font-normal text-slate-400">(optional)</span>
-        </label>
-        <input type="text" value={workset} onChange={e => setWorkset(e.target.value)}
-          placeholder="e.g. nl-nl_dmo_batch-a_hop"
-          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 placeholder:text-slate-300" />
-      </div>
+      {/* Q4 Total Working Hours — auto-calculated display */}
+      <SectionCard>
+        <FieldLabel label="12. Total Working Hours" hint="Auto-calculated" />
+        <TotalHoursDisplay total={totalWorkingHours} />
+      </SectionCard>
 
-      {/* ── Hours worked ── */}
-      <div className="px-5 py-4 space-y-1.5">
-        <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">Hours worked</label>
-        <HoursInput value={hours} onChange={setHours} />
-      </div>
+      {/* Q13 Remarks */}
+      <SectionCard>
+        <FieldLabel
+          label="13. Remarks"
+          hint="Required. If Other NP hours > 0, explain the breakdown clearly."
+          required
+        />
+        <textarea
+          value={remarks}
+          onChange={e => setRemarks(e.target.value)}
+          placeholder="Describe your work session, any issues, or NP hour breakdown…"
+          rows={3}
+          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 placeholder:text-slate-300 resize-none"
+        />
+      </SectionCard>
 
-      {/* ── Notes (optional) ── */}
-      <div className="px-5 py-4 space-y-1.5">
-        <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">
-          Notes <span className="normal-case font-normal text-slate-400">(optional)</span>
-        </label>
-        <textarea value={notes} onChange={e => setNotes(e.target.value.slice(0, 200))}
-          placeholder="Any notes about your session…" rows={3}
-          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 placeholder:text-slate-300 resize-none" />
-        <p className="text-xs text-slate-400 text-right">{notes.length}/200</p>
-      </div>
+      {/* Q14 Misc Cost */}
+      <SectionCard>
+        <FieldLabel
+          label="14. Miscellaneous Cost (USD)"
+          hint="Optional. Enter any out-of-pocket cost for reimbursement."
+        />
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={miscCost}
+          onChange={e => setMiscCost(e.target.value)}
+          placeholder="0.00"
+          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 placeholder:text-slate-300"
+        />
+      </SectionCard>
+
+      {/* Q15 Invoice Upload */}
+      <SectionCard>
+        <FieldLabel
+          label="15. Invoice / Receipt Upload"
+          hint="Optional. Up to 5 files, 10 MB each."
+        />
+        <FileUpload files={invoiceFiles} onChange={setInvoiceFiles} />
+      </SectionCard>
 
       {error && (
-        <div className="px-5 py-3">
+        <div className="flex gap-2 items-start bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
           <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
 
-      {/* ── Submit ── */}
-      <div className="px-5 py-4">
-        <button type="submit" disabled={submitting}
-          className="w-full py-2.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold text-sm rounded-lg transition-colors flex items-center justify-center gap-2">
-          {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-          {submitting ? 'Submitting…' : forUser ? `Submit hours for ${forUser.name}` : 'Submit hours'}
-        </button>
-      </div>
+      <button
+        type="submit"
+        disabled={submitting}
+        className="w-full py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold text-sm rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm"
+      >
+        {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+        {submitting
+          ? (invoiceFiles.length > 0 ? 'Uploading & submitting…' : 'Submitting…')
+          : forUser
+            ? `Submit hours for ${forUser.name}`
+            : 'Submit hours'
+        }
+      </button>
     </form>
   )
 }
 
 // ─── EditModal ────────────────────────────────────────────────────────────────
 
-function EditModal({ sub, onSaved, onClose }: { sub: SubmissionRow; onSaved: () => void; onClose: () => void }) {
-  const [date,       setDate]       = useState(sub.date)
-  const [locale,     setLocale]     = useState<Locale>(sub.locale as Locale)
-  const [workflow,   setWorkflow]   = useState<WorkflowType>(sub.workflow)
-  const [phase,      setPhase]      = useState<Phase>(sub.phase)
-  const [hours,      setHours]      = useState(sub.hours)
-  const [notes,      setNotes]      = useState(sub.notes)
-  const [saving,     setSaving]     = useState(false)
-  const [error,      setError]      = useState('')
+function EditModal({ sub, onSaved, onClose }: {
+  sub: DailySubmissionRow
+  onSaved: () => void
+  onClose: () => void
+}) {
+  const [date,                    setDate]                    = useState(sub.date)
+  const [locale,                  setLocale]                  = useState(sub.locale)
+  const [productionHours,         setProductionHours]         = useState(sub.productionHours)
+  const [hasNonProduction,        setHasNonProduction]        = useState(sub.hasNonProduction)
+  const [totalNonProductionHours, setTotalNonProductionHours] = useState(sub.totalNonProductionHours)
+  const [npHours2pass,            setNpHours2pass]            = useState(sub.npHours2pass)
+  const [npHoursPhi,              setNpHoursPhi]              = useState(sub.npHoursPhi)
+  const [npHoursTraining,         setNpHoursTraining]         = useState(sub.npHoursTraining)
+  const [npHoursReview,           setNpHoursReview]           = useState(sub.npHoursReview)
+  const [npHoursOther,            setNpHoursOther]            = useState(sub.npHoursOther)
+  const [remarks,                 setRemarks]                 = useState(sub.remarks)
+  const [miscCost,                setMiscCost]                = useState(sub.miscCost !== null ? String(sub.miscCost) : '')
+  const [saving,                  setSaving]                  = useState(false)
+  const [error,                   setError]                   = useState('')
+
+  const npSubtotal = round1(npHours2pass + npHoursPhi + npHoursTraining + npHoursReview + npHoursOther)
+  const npMatch    = Math.abs(npSubtotal - totalNonProductionHours) < 0.001
+  const totalWorkingHours = round1(productionHours + (hasNonProduction ? totalNonProductionHours : 0))
 
   async function handleSave(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
     setError('')
-    const res = await fetch(`/api/submissions?id=${sub.id}`, {
+
+    const parsedMiscCost = miscCost !== '' ? parseFloat(miscCost) : null
+
+    const res = await fetch(`/api/daily-submissions?id=${sub.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, locale, workflow, phase, hours, notes }),
+      body: JSON.stringify({
+        date, locale,
+        productionHours,
+        hasNonProduction,
+        totalNonProductionHours: hasNonProduction ? totalNonProductionHours : 0,
+        npHours2pass:    hasNonProduction ? npHours2pass    : 0,
+        npHoursPhi:      hasNonProduction ? npHoursPhi      : 0,
+        npHoursTraining: hasNonProduction ? npHoursTraining : 0,
+        npHoursReview:   hasNonProduction ? npHoursReview   : 0,
+        npHoursOther:    hasNonProduction ? npHoursOther    : 0,
+        totalWorkingHours,
+        remarks,
+        miscCost: parsedMiscCost,
+      }),
     })
+
     setSaving(false)
+
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      setError(data.error ?? 'Failed to save')
+      setError((data as { error?: string }).error ?? 'Failed to save')
       return
     }
     onSaved()
@@ -359,67 +747,81 @@ function EditModal({ sub, onSaved, onClose }: { sub: SubmissionRow; onSaved: () 
         </div>
 
         <form onSubmit={handleSave} className="space-y-4">
-          {/* Date */}
           <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Work date</label>
+            <FieldLabel label="Date" required />
             <input type="date" value={date} max={todayISO()} onChange={e => setDate(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500" />
           </div>
 
-          {/* Locale */}
           <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Locale</label>
-            <select value={locale} onChange={e => setLocale(e.target.value as Locale)}
+            <FieldLabel label="Locale" />
+            <select value={locale} onChange={e => setLocale(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
               {LOCALES.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
           </div>
 
-          {/* Workflow */}
           <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Workflow</label>
-            <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-              {WORKFLOWS.map(w => (
-                <button key={w} type="button" onClick={() => setWorkflow(w)}
-                  className={cn('flex-1 py-2 text-sm font-medium transition-colors',
-                    workflow === w ? 'bg-brand-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-50')}>
-                  {w}
+            <FieldLabel label="Production Hours" />
+            <NumInput value={productionHours} onChange={setProductionHours} min={0} max={8} step={0.5} />
+          </div>
+
+          <div>
+            <FieldLabel label="Non-production hours?" />
+            <div className="flex gap-2 mt-1">
+              {([true, false] as const).map(val => (
+                <button key={String(val)} type="button" onClick={() => setHasNonProduction(val)}
+                  className={cn('flex-1 py-2 rounded-lg text-sm font-medium border-2 transition-all',
+                    hasNonProduction === val
+                      ? 'bg-brand-500 border-brand-500 text-white'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300')}>
+                  {val ? 'Yes' : 'No'}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Phase */}
-          <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Phase</label>
-            <div className="flex gap-2 flex-wrap">
-              {PHASES.map(p => {
-                const sel = phase === p.key
-                return (
-                  <button key={p.key} type="button" onClick={() => setPhase(p.key)}
-                    className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all',
-                      sel ? cn(p.bg, p.text, 'border-transparent ring-2', p.ring) : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300')}>
-                    <span className={cn('w-2 h-2 rounded-full', p.dot)} />
-                    {p.label}
-                  </button>
-                )
-              })}
+          {hasNonProduction && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+              <div>
+                <FieldLabel label="Total NP Hours" />
+                <NumInput value={totalNonProductionHours} onChange={setTotalNonProductionHours} min={0} max={8} step={0.5} />
+                <div className={cn('mt-1 text-xs px-2 py-0.5 rounded-full inline-block',
+                  npMatch ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>
+                  Sub-total: {npSubtotal} / {totalNonProductionHours} h
+                </div>
+              </div>
+              {[
+                ['2Pass', npHours2pass, setNpHours2pass] as const,
+                ['PHI', npHoursPhi, setNpHoursPhi] as const,
+                ['Training', npHoursTraining, setNpHoursTraining] as const,
+                ['Review', npHoursReview, setNpHoursReview] as const,
+                ['Other', npHoursOther, setNpHoursOther] as const,
+              ].map(([label, val, setter]) => (
+                <div key={label}>
+                  <FieldLabel label={label} />
+                  <NumInput value={val} onChange={setter} min={0} max={8} step={0.5} />
+                </div>
+              ))}
             </div>
+          )}
+
+          <div>
+            <FieldLabel label="Total Working Hours" hint="Auto-calculated" />
+            <p className="text-2xl font-bold text-slate-800 tabular-nums">{totalWorkingHours}h</p>
           </div>
 
-          {/* Hours */}
           <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Hours worked</label>
-            <HoursInput value={hours} onChange={setHours} />
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">
-              Notes <span className="normal-case font-normal text-slate-400">(optional)</span>
-            </label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value.slice(0, 200))} rows={2}
+            <FieldLabel label="Remarks" required />
+            <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={2}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
+          </div>
+
+          <div>
+            <FieldLabel label="Misc Cost (USD)" />
+            <input type="number" min="0" step="0.01" value={miscCost}
+              onChange={e => setMiscCost(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500" />
           </div>
 
           {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
@@ -440,36 +842,43 @@ function EditModal({ sub, onSaved, onClose }: { sub: SubmissionRow; onSaved: () 
   )
 }
 
-// ─── SubmissionsPanel (admin tab 2) ───────────────────────────────────────────
+// ─── SubmissionsPanel ─────────────────────────────────────────────────────────
 
 function SubmissionsPanel() {
   const [from,      setFrom]      = useState(daysAgo(7))
   const [to,        setTo]        = useState(todayISO())
-  const [subs,      setSubs]      = useState<SubmissionRow[]>([])
+  const [subs,      setSubs]      = useState<DailySubmissionRow[]>([])
   const [loading,   setLoading]   = useState(false)
-  const [editSub,   setEditSub]   = useState<SubmissionRow | null>(null)
+  const [editSub,   setEditSub]   = useState<DailySubmissionRow | null>(null)
   const [deleteSub, setDeleteSub] = useState<string | null>(null)
   const [deleting,  setDeleting]  = useState(false)
 
   const fetchSubs = useCallback(async () => {
     setLoading(true)
-    const res  = await fetch(`/api/submissions?from=${from}&to=${to}`)
-    const data = await res.json()
+    const res  = await fetch(`/api/daily-submissions?from=${from}&to=${to}`)
+    const data = await res.json() as DailySubmissionRow[]
     setSubs(Array.isArray(data) ? data : [])
     setLoading(false)
   }, [from, to])
 
-  useEffect(() => { fetchSubs() }, [fetchSubs])
+  useEffect(() => { void fetchSubs() }, [fetchSubs])
 
   async function handleDelete(id: string) {
     setDeleting(true)
-    await fetch(`/api/submissions?id=${id}`, { method: 'DELETE' })
+    await fetch(`/api/daily-submissions?id=${id}`, { method: 'DELETE' })
     setDeleting(false)
     setDeleteSub(null)
-    fetchSubs()
+    void fetchSubs()
   }
 
-  const totalHours = subs.reduce((sum, s) => sum + s.hours, 0)
+  const totals = subs.reduce(
+    (acc, s) => ({
+      prod:  round1(acc.prod  + s.productionHours),
+      np:    round1(acc.np    + s.totalNonProductionHours),
+      total: round1(acc.total + s.totalWorkingHours),
+    }),
+    { prod: 0, np: 0, total: 0 }
+  )
 
   return (
     <div className="space-y-4">
@@ -486,7 +895,7 @@ function SubmissionsPanel() {
             <input type="date" value={to} onChange={e => setTo(e.target.value)}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
           </div>
-          <button onClick={fetchSubs}
+          <button onClick={() => void fetchSubs()}
             className="px-4 py-1.5 bg-brand-500 text-white text-sm font-medium rounded-lg hover:bg-brand-600 transition-colors">
             Apply
           </button>
@@ -496,7 +905,8 @@ function SubmissionsPanel() {
       {/* Summary */}
       {!loading && (
         <p className="text-xs text-slate-500">
-          {subs.length} submission{subs.length !== 1 ? 's' : ''} · {totalHours.toFixed(1)}h total
+          {subs.length} submission{subs.length !== 1 ? 's' : ''} ·
+          Production: {totals.prod}h · NP: {totals.np}h · Total: {totals.total}h
         </p>
       )}
 
@@ -509,10 +919,10 @@ function SubmissionsPanel() {
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">User</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Locale</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Workflow</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Phase</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Hours</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Notes</th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Prod h</th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">NP h</th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total h</th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Remarks</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-20"></th>
               </tr>
             </thead>
@@ -535,14 +945,10 @@ function SubmissionsPanel() {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-slate-700">{fmtDate(s.date)}</td>
                   <td className="px-4 py-3 text-slate-600 text-xs">{s.locale}</td>
-                  <td className="px-4 py-3">
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">{s.workflow}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', PHASE_COLORS[s.phase])}>{s.phase}</span>
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-slate-700">{s.hours}h</td>
-                  <td className="px-4 py-3 text-slate-500 max-w-[160px] truncate text-xs">{s.notes || '—'}</td>
+                  <td className="px-4 py-3 font-medium text-slate-700">{s.productionHours}h</td>
+                  <td className="px-4 py-3 text-slate-600">{s.totalNonProductionHours}h</td>
+                  <td className="px-4 py-3 font-semibold text-slate-800">{s.totalWorkingHours}h</td>
+                  <td className="px-4 py-3 text-slate-500 max-w-[160px] truncate text-xs">{s.remarks || '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
                       <button onClick={() => setEditSub(s)} title="Edit"
@@ -562,19 +968,21 @@ function SubmissionsPanel() {
         </div>
       </div>
 
-      {/* Edit modal */}
       {editSub && (
-        <EditModal sub={editSub} onSaved={() => { setEditSub(null); fetchSubs() }} onClose={() => setEditSub(null)} />
+        <EditModal
+          sub={editSub}
+          onSaved={() => { setEditSub(null); void fetchSubs() }}
+          onClose={() => setEditSub(null)}
+        />
       )}
 
-      {/* Delete confirm */}
       {deleteSub && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
             <h3 className="text-base font-semibold text-slate-800 mb-2">Delete submission?</h3>
             <p className="text-sm text-slate-500 mb-5">This action cannot be undone.</p>
             <div className="flex gap-3">
-              <button onClick={() => handleDelete(deleteSub)} disabled={deleting}
+              <button onClick={() => void handleDelete(deleteSub)} disabled={deleting}
                 className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors">
                 {deleting ? 'Deleting…' : 'Delete'}
               </button>
@@ -592,7 +1000,7 @@ function SubmissionsPanel() {
 
 // ─── AdminView ────────────────────────────────────────────────────────────────
 
-function AdminView() {
+function AdminView({ session }: { session: SessionUser }) {
   const [activeTab, setActiveTab] = useState<'form' | 'submissions'>('form')
   const [users,     setUsers]     = useState<UserSummary[]>([])
   const [forUserId, setForUserId] = useState('')
@@ -602,11 +1010,11 @@ function AdminView() {
       .then(r => r.json())
       .then((data: UserSummary[]) => {
         if (!Array.isArray(data)) return
-        // Admin can submit for any freelancer
         const freelancers = data.filter(u => u.role === 'freelancer' || u.employeeType === 'FREELANCER')
         setUsers(freelancers)
         if (freelancers.length > 0) setForUserId(freelancers[0].id)
       })
+      .catch(() => {/* ignore */})
   }, [])
 
   const selectedUser = users.find(u => u.id === forUserId)
@@ -666,11 +1074,10 @@ function AdminView() {
             <p className="text-xs text-amber-600 mt-1.5">You are submitting hours on behalf of this freelancer</p>
           </div>
 
-          {/* Submission form — remounts when selected user changes, inheriting their locale */}
           {forUser && (
             <HoursForm
               key={forUser.id}
-              initialLocale={(forUser.locale as Locale | null) ?? 'en_GB'}
+              session={session}
               forUser={forUser}
             />
           )}
@@ -696,10 +1103,9 @@ export default function SubmitPage() {
         if (!res.ok) return null
         return res.json()
       })
-      .then(data => {
+      .then((data: { user: SessionUser } | null) => {
         if (!data) return
         const u: SessionUser = data.user
-        // Only freelancers and admins may access this page
         if (u.role !== 'freelancer' && u.role !== 'admin') {
           router.push('/')
           return
@@ -725,10 +1131,7 @@ export default function SubmitPage() {
 
   if (!user) return null
 
-  const isAdmin    = user.role === 'admin'
-  const userLocale = user.locale && (LOCALES as readonly string[]).includes(user.locale)
-    ? user.locale as Locale
-    : 'en_GB'
+  const isAdmin = user.role === 'admin'
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -751,7 +1154,7 @@ export default function SubmitPage() {
               )}
             </span>
           )}
-          <button type="button" onClick={handleLogout}
+          <button type="button" onClick={() => void handleLogout()}
             className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors">
             <LogOut className="w-3.5 h-3.5" />
             Log out
@@ -766,14 +1169,17 @@ export default function SubmitPage() {
             {isAdmin ? 'Hours Submissions' : 'Log your hours'}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {isAdmin ? 'Submit and manage freelancer daily hour logs' : 'Record your daily work session'}
+            {isAdmin
+              ? 'Submit and manage freelancer daily hour logs'
+              : 'Record your daily work session — complete all 15 questions'
+            }
           </p>
         </div>
 
         {isAdmin ? (
-          <AdminView />
+          <AdminView session={user} />
         ) : (
-          <HoursForm initialLocale={userLocale} />
+          <HoursForm session={user} />
         )}
       </main>
     </div>
