@@ -51,8 +51,16 @@ export function getDefaultTeamSize(locale: string, workflow: WorkflowType): numb
   return 11 // default for unknown locales
 }
 
+// Snap a date forward to the nearest working day (no-op if already Mon–Fri)
+export function toWorkingDay(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00')
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+  return d.toISOString().split('T')[0]
+}
+
 export function addWorkingDays(dateStr: string, days: number): string {
-  if (days <= 0) return dateStr
+  // Always normalise input — if dateStr is a weekend, snap forward before counting
+  if (days <= 0) return toWorkingDay(dateStr)
   const d = new Date(dateStr + 'T12:00:00')
   let remaining = days
   while (remaining > 0) {
@@ -60,6 +68,34 @@ export function addWorkingDays(dateStr: string, days: number): string {
     if (d.getDay() !== 0 && d.getDay() !== 6) remaining--
   }
   return d.toISOString().split('T')[0]
+}
+
+// Shift dateStr backward by N working days
+function subtractWorkingDays(dateStr: string, days: number): string {
+  if (days <= 0) return toWorkingDay(dateStr)
+  const d = new Date(dateStr + 'T12:00:00')
+  let remaining = days
+  while (remaining > 0) {
+    d.setDate(d.getDate() - 1)
+    if (d.getDay() !== 0 && d.getDay() !== 6) remaining--
+  }
+  return d.toISOString().split('T')[0]
+}
+
+// Signed working-day count from `from` (exclusive) to `to` (inclusive).
+// Positive = forward, negative = backward.
+function workingDayDelta(from: string, to: string): number {
+  if (from === to) return 0
+  const f = new Date(from + 'T12:00:00')
+  const t = new Date(to   + 'T12:00:00')
+  const forward = t > f
+  let count = 0
+  const d = new Date(f)
+  while (forward ? d.getTime() < t.getTime() : d.getTime() > t.getTime()) {
+    d.setDate(d.getDate() + (forward ? 1 : -1))
+    if (d.getDay() !== 0 && d.getDay() !== 6) count++
+  }
+  return forward ? count : -count
 }
 
 export function calculateETA(
@@ -265,10 +301,14 @@ export function adjustPhaseDate(
   field: EditablePhaseField,
   newDate: string,
 ): PhaseTimeline {
-  const parse  = (d: string) => new Date(d + 'T12:00:00')
-  const msDiff = parse(newDate).getTime() - parse(phases[field]).getTime()
-  if (msDiff === 0) return phases
-  const shift  = (d: string) => new Date(parse(d).getTime() + msDiff).toISOString().split('T')[0]
+  if (newDate === phases[field]) return phases
+  // Calculate the signed working-day difference and shift downstream dates by the
+  // same number of working days — never by raw calendar days, which would push
+  // dates onto weekends when the delta spans a Friday.
+  const delta = workingDayDelta(phases[field] as string, newDate)
+  if (delta === 0) return phases
+  const shift = (d: string) =>
+    delta > 0 ? addWorkingDays(d, delta) : subtractWorkingDays(d, -delta)
 
   switch (field) {
     case 'p1End':
