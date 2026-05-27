@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { verifyToken, COOKIE } from '@/lib/auth'
+import { db } from '@/lib/db'
 import {
   readSubmissions,
   addSubmission,
@@ -183,4 +184,48 @@ export async function POST(req: NextRequest) {
 
   const created = await addSubmission(payload)
   return NextResponse.json(created, { status: 201 })
+}
+
+// ─── PATCH /api/submissions?id= ───────────────────────────────────────────────
+// Admin only. Updates mutable fields on an existing submission.
+
+export async function PATCH(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (session.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const id = req.nextUrl.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  let body: Record<string, unknown>
+  try { body = await req.json() }
+  catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
+
+  const updates: Record<string, unknown> = {}
+  if (body.date     !== undefined) updates.date     = body.date
+  if (body.locale   !== undefined) updates.locale   = body.locale
+  if (body.workflow !== undefined) updates.workflow  = body.workflow
+  if (body.phase    !== undefined) updates.phase    = body.phase
+  if (body.hours    !== undefined) updates.hours    = body.hours
+  if (body.notes    !== undefined) updates.notes    = body.notes
+
+  const { error } = await db.from('submissions').update(updates).eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
+
+// ─── DELETE /api/submissions?id= ──────────────────────────────────────────────
+// Admin only.
+
+export async function DELETE(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (session.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const id = req.nextUrl.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  const { error } = await db.from('submissions').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
 }
