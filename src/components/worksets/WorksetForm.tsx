@@ -123,29 +123,38 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
     }))
   }, [form.predecessorId, isBackToBack])
 
-  // Recalculate ETA suggestion when key fields change
+  // Recalculate ETA suggestion for back-to-back worksets.
+  // form.startDate is intentionally excluded from deps — including it would cause the
+  // effect to overwrite any manual start-date edit the user makes.
+  // startDate is only auto-set on creation (!isEdit), never when editing an existing workset.
   useEffect(() => {
+    if (!isBackToBack || !form.predecessorId) return
     const n = parseInt(form.teamSize)
-    if (isBackToBack && form.predecessorId) {
-      const pred = worksets.find(w => w.id === form.predecessorId)
-      if (pred?.phases && form.locale && n >= 5) {
-        const result = calculateSuccessorETA(pred.phases, form.workflow, form.locale, n)
-        setEtaSuggestion(result)
-        // Auto-derive start date (day after predecessor ETA)
-        const set2Start = getSuccessorStartDate(pred.phases.etaDate)
-        set('startDate', set2Start)
-        set('eta', result.etaDate)
-      }
-    } else if (!isBackToBack) {
-      if (form.locale && form.startDate && n >= 5) {
-        const result = calculateETA(form.workflow, form.locale, n, form.startDate)
-        setEtaSuggestion(result)
-        if (!form.eta || form.eta === '') {
-          set('eta', result.etaDate)
-        }
-      }
+    const pred = worksets.find(w => w.id === form.predecessorId)
+    if (!pred?.phases || !form.locale || n < 5) return
+    const result = calculateSuccessorETA(pred.phases, form.workflow, form.locale, n)
+    setEtaSuggestion(result)
+    set('eta', result.etaDate)
+    // Auto-fill start date only when creating a new workset, not when editing
+    if (!isEdit) {
+      set('startDate', getSuccessorStartDate(pred.phases.etaDate))
     }
-  }, [form.workflow, form.locale, form.teamSize, form.startDate, form.predecessorId, isBackToBack])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.workflow, form.locale, form.teamSize, form.predecessorId, isBackToBack, isEdit])
+
+  // Recalculate ETA suggestion for standalone worksets.
+  // Separate effect so startDate changes trigger recalculation here without
+  // interfering with the back-to-back branch above.
+  useEffect(() => {
+    if (isBackToBack) return
+    const n = parseInt(form.teamSize)
+    if (!form.locale || !form.startDate || n < 5) return
+    const result = calculateETA(form.workflow, form.locale, n, form.startDate)
+    setEtaSuggestion(result)
+    if (!form.eta || form.eta === '') {
+      set('eta', result.etaDate)
+    }
+  }, [form.workflow, form.locale, form.teamSize, form.startDate, isBackToBack])
 
   const applyEtaSuggestion = () => {
     if (etaSuggestion) set('eta', etaSuggestion.etaDate)

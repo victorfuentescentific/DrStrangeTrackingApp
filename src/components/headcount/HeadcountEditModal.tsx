@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Check, Loader2, AlertTriangle, KeyRound } from 'lucide-react'
+import { X, Check, Loader2, AlertTriangle, KeyRound, Eye, EyeOff, Copy, RefreshCw } from 'lucide-react'
 import { HeadcountRecord } from '@/lib/headcount-types'
 
 interface HeadcountEditModalProps {
@@ -75,6 +75,8 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState<string | null>(null)
   const [newPassword,   setNewPassword]   = useState('')
+  const [showPassword,  setShowPassword]  = useState(false)
+  const [copied,        setCopied]        = useState(false)
   const [resetting,     setResetting]     = useState(false)
   const [resetMsg,      setResetMsg]      = useState<string | null>(null)
   const [resetError,    setResetError]    = useState<string | null>(null)
@@ -139,6 +141,22 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
       setSaving(false)
       setError(err instanceof Error ? err.message : 'Network error — could not reach the server.')
     }
+  }
+
+  function generatePassword() {
+    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*'
+    const array = new Uint8Array(14)
+    crypto.getRandomValues(array)
+    const pwd = Array.from(array, b => chars[b % chars.length]).join('')
+    setNewPassword(pwd)
+    setShowPassword(true)
+    setResetMsg(null); setResetError(null); setConfirmReset(false)
+  }
+
+  async function copyPassword() {
+    await navigator.clipboard.writeText(newPassword)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   async function resetPassword() {
@@ -272,16 +290,53 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
             </h3>
             <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
               <p className="text-xs text-slate-500 mb-3">
-                Reset this user&apos;s portal login password. They log in with their centific email.
+                Set a new portal login password for this user. Passwords are hashed and cannot be retrieved — use <span className="font-medium text-slate-700">Generate</span> to create a shareable temporary password.
               </p>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  placeholder="New password (min. 8 characters)"
-                  value={newPassword}
-                  onChange={e => { setNewPassword(e.target.value); setResetMsg(null); setResetError(null); setConfirmReset(false) }}
-                  className="flex-1 text-sm rounded-lg border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+
+              {/* Password input row */}
+              <div className="flex gap-2 mb-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="New password (min. 8 characters)"
+                    value={newPassword}
+                    onChange={e => { setNewPassword(e.target.value); setResetMsg(null); setResetError(null); setConfirmReset(false) }}
+                    className="w-full text-sm rounded-lg border border-slate-200 px-2.5 py-1.5 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+
+                {/* Copy button — only visible when there's a value */}
+                {newPassword && (
+                  <button
+                    type="button"
+                    onClick={copyPassword}
+                    className="px-2.5 py-1.5 text-sm rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 inline-flex items-center gap-1.5 transition-colors"
+                    title="Copy password"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+
+                {/* Generate button */}
+                <button
+                  type="button"
+                  onClick={generatePassword}
+                  className="px-2.5 py-1.5 text-sm rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 inline-flex items-center gap-1.5 transition-colors"
+                  title="Generate a random password"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Generate
+                </button>
+
+                {/* Reset / Confirm button */}
                 <button
                   onClick={resetPassword}
                   disabled={resetting || newPassword.length < 8}
@@ -294,13 +349,14 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
                     : confirmReset ? 'Confirm reset' : 'Reset password'}
                 </button>
               </div>
+
               {confirmReset && (
-                <p className="text-xs mt-2 text-amber-700 font-medium">
+                <p className="text-xs mt-1 text-amber-700 font-medium">
                   ⚠ This will immediately change {record.name}&apos;s login password. Click &quot;Confirm reset&quot; to proceed.
                 </p>
               )}
-              {resetMsg   && <p className="text-xs mt-2 text-green-700">{resetMsg}</p>}
-              {resetError && <p className="text-xs mt-2 text-red-600">{resetError}</p>}
+              {resetMsg   && <p className="text-xs mt-1 text-green-700">{resetMsg}</p>}
+              {resetError && <p className="text-xs mt-1 text-red-600">{resetError}</p>}
             </div>
           </section>
         </div>
