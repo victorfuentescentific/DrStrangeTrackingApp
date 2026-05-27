@@ -99,6 +99,7 @@ export async function POST(req: NextRequest) {
     audit_trail:          body.auditTrail ?? [],
     created_at:           body.createdAt ?? new Date().toISOString().split('T')[0],
     updated_at:           body.updatedAt ?? new Date().toISOString().split('T')[0],
+    updated_by:           session.email,
   }
 
   const { data, error } = await db.from('worksets').insert(row).select().single()
@@ -118,7 +119,10 @@ export async function PUT(req: NextRequest) {
 
   if (!body.id) return NextResponse.json({ error: 'id is required' }, { status: 422 })
 
-  const row: Record<string, unknown> = { updated_at: new Date().toISOString().split('T')[0] }
+  const row: Record<string, unknown> = {
+    updated_at: new Date().toISOString().split('T')[0],
+    updated_by: session.email,   // stamped on the row so DB triggers can read it
+  }
   if (body.worksetId          !== undefined) row.workset_id          = body.worksetId
   if (body.name               !== undefined) row.name                = body.name
   if (body.workflow           !== undefined) row.workflow            = body.workflow
