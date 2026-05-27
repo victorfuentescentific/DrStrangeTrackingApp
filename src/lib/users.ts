@@ -44,12 +44,18 @@ export async function validatePassword(user: StoredUser, password: string): Prom
 export async function updatePassword(
   id: string,
   newPassword: string,
+  changedBy: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const hash = await bcrypt.hash(newPassword, 10)
-  const { error } = await db
-    .from('Account credentials')
-    .update({ password_hash: hash })
-    .eq('id', id)
+
+  // Use a single DB function so set_config() fires in the same connection as the
+  // UPDATE, allowing the audit trigger to read app.current_user without getting null.
+  const { error } = await db.rpc('reset_user_password', {
+    p_user_id:       id,
+    p_password_hash: hash,
+    p_changed_by:    changedBy,
+  })
+
   if (error) {
     console.error('[updatePassword] Supabase error:', error.message, '| code:', error.code, '| id:', id)
     return { ok: false, error: error.message }

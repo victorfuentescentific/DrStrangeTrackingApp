@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 422 })
   }
 
-  const result = await updatePassword(body.id, body.password)
+  const result = await updatePassword(body.id, body.password, session.email)
   if (!result.ok) {
     return NextResponse.json(
       { error: result.error ?? 'Failed to update password' },
