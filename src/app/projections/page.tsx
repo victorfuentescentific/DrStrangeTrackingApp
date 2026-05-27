@@ -50,7 +50,7 @@ export default function ProjectionsPage() {
         ))}
       </div>
 
-      {tab === 'weekly'     && <WeeklyProjections />}
+      {tab === 'weekly'     && <WeeklyProjections isPrivileged={canEdit} />}
       {tab === 'calculator' && <ProductionCalculator />}
       {tab === 'history'    && <ProjectionHistory isAdmin={isAdmin} />}
       {tab === 'actuals'    && <ProjectionActuals canEdit={canEdit} />}

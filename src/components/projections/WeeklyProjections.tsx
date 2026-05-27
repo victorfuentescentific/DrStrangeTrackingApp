@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { format } from 'date-fns'
 import { BarChart2, Loader2, AlertTriangle, Users, Calculator, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ProjectionCharts } from './ProjectionCharts'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,8 @@ interface CalcSession {
   output_buffered: number
   unit:            string
   label:           string | null
+  date_from:       string | null
+  date_to:         string | null
   created_at:      string
 }
 
@@ -101,7 +104,7 @@ function SummaryCard({ label, value, sub }: { label: string; value: string | num
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function WeeklyProjections() {
+export function WeeklyProjections({ isPrivileged = false }: { isPrivileged?: boolean }) {
   const [sessions, setSessions]           = useState<CalcSession[]>([])
   const [loading,  setLoading]            = useState(true)
   const [error,    setError]              = useState<string | null>(null)
@@ -216,6 +219,20 @@ export function WeeklyProjections() {
               sub={`${sessions[0].locale} · ${sessions[0].workflow}`}
             />
           </div>
+
+          {/* ── Interactive charts (admin / lead only) ── */}
+          {isPrivileged && (
+            <>
+              <div className="border-t border-slate-100 pt-5">
+                <ProjectionCharts sessions={sessions} />
+              </div>
+              <div className="border-t border-slate-100 pt-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-4">
+                  Latest projections by locale
+                </p>
+              </div>
+            </>
+          )}
 
           {/* ── Filters ── */}
           <div className="flex items-center gap-2 flex-wrap">
