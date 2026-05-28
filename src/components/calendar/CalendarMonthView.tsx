@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Workset } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { WORKFLOW_COLORS } from '@/lib/eta-calculator'
+import { getLocaleColor, PHASE_PATTERN_STYLE, PHASE_LABEL, PHASE_LEGEND, type PhaseKey } from '@/lib/locale-colors'
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek,
   addDays, addMonths, subMonths, isSameDay, parseISO,
@@ -16,69 +16,117 @@ interface CalendarMonthViewProps {
 }
 
 // ─── Layout constants ────────────────────────────────────────────────────────
-const DATE_ROW_H  = 28  // px for the date-number strip at top of each week row
-const BAR_H       = 20  // px tall per event bar
-const BAR_GAP     = 2   // px gap between stacked bars
-const MAX_LANES   = 3   // max bars shown before "+N more"
+const DATE_ROW_H = 28   // px for date-number row at top of each week
+const BAR_H      = 20   // px height per event lane
+const BAR_GAP    = 2    // px gap between stacked lanes
+const MAX_LANES  = 3    // lanes shown before "+N more"
 
-// ─── Lane assignment ─────────────────────────────────────────────────────────
-type WeekBar = {
-  ws:       Workset
-  color:    string
-  startCol: number   // 0-6 column where bar starts within this week
-  span:     number   // how many columns it occupies in this week
-  isFirst:  boolean  // ws actually starts in this week (show name label)
-  isLast:   boolean  // ws actually ends in this week (right-rounded)
-  lane:     number   // vertical row index (0-based)
-}
+// ─── Phase segment definition ────────────────────────────────────────────────
+type PhaseDef = { phase: PhaseKey; startDate: string; endDate: string }
 
-function assignLanes(bars: WeekBar[]): WeekBar[] {
-  // Sort left-to-right so earlier bars grab lower lanes first
-  const sorted = [...bars].sort((a, b) => a.startCol - b.startCol || a.ws.name.localeCompare(b.ws.name))
-  const laneEndCol: number[] = []   // last occupied column per lane
-
-  for (const bar of sorted) {
-    let lane = laneEndCol.findIndex(end => end < bar.startCol)
-    if (lane === -1) {
-      lane = laneEndCol.length
-    }
-    laneEndCol[lane] = bar.startCol + bar.span - 1
-    bar.lane = lane
+function getWorksetPhases(ws: Workset): PhaseDef[] {
+  if (!ws.phases) {
+    // No phase data → treat entire span as PHI (solid)
+    return [{ phase: 'phi', startDate: ws.startDate, endDate: ws.revisedEta ?? ws.eta }]
   }
-  return sorted
+  const p = ws.phases
+  return [
+    { phase: 'p1',  startDate: p.p1Start,  endDate: p.p1End   },
+    { phase: 'rev', startDate: p.p1End,    endDate: p.rev1End  },
+    { phase: 'p2',  startDate: p.p2Start,  endDate: p.p2End   },
+    { phase: 'phi', startDate: p.phiStart, endDate: p.etaDate  },
+  ]
 }
 
-// ─── Per-week bar builder ────────────────────────────────────────────────────
-function getBarsForWeek(weekStart: Date, weekEnd: Date, worksets: Workset[]): WeekBar[] {
-  const raw: WeekBar[] = []
+// ─── Per-week data structures ────────────────────────────────────────────────
+type WeekPhaseSlice = {
+  phase:        PhaseKey
+  startCol:     number   // 0–6 within the week
+  endCol:       number
+  isPhaseStart: boolean  // phase actually starts in this week
+  isPhaseEnd:   boolean  // phase actually ends in this week
+}
+
+type WorksetWeekBar = {
+  ws:             Workset
+  localeColor:    string
+  lane:           number
+  isWorksetStart: boolean  // ws.startDate falls in this week
+  isWorksetEnd:   boolean  // ws eta falls in this week
+  phases:         WeekPhaseSlice[]  // phase slices visible in this week
+}
+
+function getBarsForWeek(weekStart: Date, weekEnd: Date, worksets: Workset[]): WorksetWeekBar[] {
+  const raw: Array<Omit<WorksetWeekBar, 'lane'>> = []
 
   for (const ws of worksets) {
     if (ws.status === 'completed' || !ws.startDate || !ws.eta) continue
 
     const wsStart = parseISO(ws.startDate)
     const wsEnd   = parseISO(ws.revisedEta ?? ws.eta)
-
-    // No overlap with this week?
     if (wsStart > weekEnd || wsEnd < weekStart) continue
 
-    const clampStart = wsStart < weekStart ? weekStart : wsStart
-    const clampEnd   = wsEnd   > weekEnd   ? weekEnd   : wsEnd
+    // Compute phase slices that overlap this week
+    const phaseDefs = getWorksetPhases(ws)
+    const phaseSlices: WeekPhaseSlice[] = []
 
-    const startCol = differenceInCalendarDays(clampStart, weekStart)
-    const endCol   = differenceInCalendarDays(clampEnd,   weekStart)
+    for (const def of phaseDefs) {
+      const pStart = parseISO(def.startDate)
+      const pEnd   = parseISO(def.endDate)
+      if (pStart > weekEnd || pEnd < weekStart) continue
+
+      const clampStart = pStart < weekStart ? weekStart : pStart
+      const clampEnd   = pEnd   > weekEnd   ? weekEnd   : pEnd
+
+      phaseSlices.push({
+        phase:        def.phase,
+        startCol:     differenceInCalendarDays(clampStart, weekStart),
+        endCol:       differenceInCalendarDays(clampEnd,   weekStart),
+        isPhaseStart: pStart >= weekStart,
+        isPhaseEnd:   pEnd   <= weekEnd,
+      })
+    }
+
+    // Fallback: if no phase slices resolved, show whole workset span as phi
+    if (phaseSlices.length === 0) {
+      const clampStart = wsStart < weekStart ? weekStart : wsStart
+      const clampEnd   = wsEnd   > weekEnd   ? weekEnd   : wsEnd
+      phaseSlices.push({
+        phase:        'phi',
+        startCol:     differenceInCalendarDays(clampStart, weekStart),
+        endCol:       differenceInCalendarDays(clampEnd,   weekStart),
+        isPhaseStart: wsStart >= weekStart,
+        isPhaseEnd:   wsEnd   <= weekEnd,
+      })
+    }
 
     raw.push({
       ws,
-      color:    WORKFLOW_COLORS[ws.workflow] ?? '#6366f1',
-      startCol,
-      span:     endCol - startCol + 1,
-      isFirst:  wsStart >= weekStart,
-      isLast:   wsEnd   <= weekEnd,
-      lane:     0,
+      localeColor:    getLocaleColor(ws.locale),
+      isWorksetStart: wsStart >= weekStart,
+      isWorksetEnd:   wsEnd   <= weekEnd,
+      phases:         phaseSlices,
     })
   }
 
-  return assignLanes(raw)
+  // Greedy lane assignment — sort by leftmost column then name
+  const sorted = [...raw].sort((a, b) => {
+    const ac = a.phases[0]?.startCol ?? 0
+    const bc = b.phases[0]?.startCol ?? 0
+    return ac - bc || a.ws.name.localeCompare(b.ws.name)
+  })
+
+  const laneEndCol: number[] = []
+  for (const item of sorted) {
+    const firstCol = item.phases[0]?.startCol ?? 0
+    const lastCol  = item.phases[item.phases.length - 1]?.endCol ?? 6
+    let lane = laneEndCol.findIndex(end => end < firstCol)
+    if (lane === -1) lane = laneEndCol.length
+    laneEndCol[lane] = lastCol
+    ;(item as WorksetWeekBar).lane = lane
+  }
+
+  return sorted as WorksetWeekBar[]
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -129,10 +177,7 @@ export function CalendarMonthView({ worksets }: CalendarMonthViewProps) {
       {/* Day-of-week header */}
       <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-          <div
-            key={day}
-            className="py-2 text-center text-[10px] font-semibold text-slate-500 uppercase tracking-wide"
-          >
+          <div key={day} className="py-2 text-center text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
             {day}
           </div>
         ))}
@@ -181,53 +226,54 @@ export function CalendarMonthView({ worksets }: CalendarMonthViewProps) {
                 )
               })}
 
-              {/* Continuous event bars */}
-              {visible.map((bar, bi) => {
-                const top      = DATE_ROW_H + bar.lane * (BAR_H + BAR_GAP)
-                const leftPct  = (bar.startCol / 7) * 100
-                const widthPct = (bar.span      / 7) * 100
+              {/* Workset phase bars */}
+              {visible.map(bar => {
+                const top             = DATE_ROW_H + bar.lane * (BAR_H + BAR_GAP)
+                const phaseCount      = bar.phases.length
+                const firstPhaseIdx   = 0
+                const lastPhaseIdx    = phaseCount - 1
+                // Show label on the very first phase segment (leftmost in this week)
+                const labelText       = bar.isWorksetStart ? `${bar.ws.name} · ${bar.ws.locale}` : ''
 
-                // Label only on the first visible segment of this bar
-                const label = bar.isFirst
-                  ? `${bar.ws.name} · ${bar.ws.locale}`
-                  : ''
+                return bar.phases.map((seg, si) => {
+                  const leftPct  = (seg.startCol / 7) * 100
+                  const widthPct = ((seg.endCol - seg.startCol + 1) / 7) * 100
+                  const isFirst  = si === firstPhaseIdx && bar.isWorksetStart
+                  const isLast   = si === lastPhaseIdx  && bar.isWorksetEnd
+                  const borderRadius = isFirst && isLast ? '6px'
+                    : isFirst ? '6px 0 0 6px'
+                    : isLast  ? '0 6px 6px 0'
+                    : '0'
 
-                const etaStr   = format(parseISO(bar.ws.revisedEta ?? bar.ws.eta), 'dd MMM')
-                const startStr = format(parseISO(bar.ws.startDate), 'dd MMM')
-                const tooltip  = `${bar.ws.name} (${bar.ws.locale}) · ${bar.ws.workflow}\n${startStr} → ${etaStr}${bar.ws.revisedEta ? ' (revised)' : ''}`
+                  const phaseTitle = `${bar.ws.name} · ${bar.ws.locale} · ${bar.ws.workflow} — ${PHASE_LABEL[seg.phase]}`
 
-                return (
-                  <div
-                    key={`${bar.ws.id}-${bi}`}
-                    title={tooltip}
-                    className={cn(
-                      'absolute flex items-center overflow-hidden cursor-default select-none',
-                      // Left rounded only at workset start; right rounded only at workset end
-                      bar.isFirst  ? 'rounded-l-md' : '',
-                      bar.isLast   ? 'rounded-r-md' : '',
-                      // Tiny left indent on continuations so the edge bleeds slightly
-                      !bar.isFirst ? 'pl-0' : 'pl-1.5',
-                    )}
-                    style={{
-                      top,
-                      // 1px inset on each side so adjacent week borders stay visible
-                      left:            `calc(${leftPct}% + 1px)`,
-                      width:           `calc(${widthPct}% - 2px)`,
-                      height:          BAR_H,
-                      backgroundColor: bar.color,
-                      opacity:         0.82,
-                    }}
-                  >
-                    {label && (
-                      <span className="text-[9px] text-white font-semibold truncate leading-none">
-                        {label}
-                      </span>
-                    )}
-                  </div>
-                )
+                  return (
+                    <div
+                      key={`${bar.ws.id}-${seg.phase}`}
+                      title={phaseTitle}
+                      className="absolute flex items-center overflow-hidden cursor-default select-none"
+                      style={{
+                        top,
+                        left:            `calc(${leftPct}% + 1px)`,
+                        width:           `calc(${widthPct}% - 2px)`,
+                        height:          BAR_H,
+                        backgroundColor: bar.localeColor,
+                        borderRadius,
+                        opacity:         0.84,
+                        ...PHASE_PATTERN_STYLE[seg.phase],
+                      }}
+                    >
+                      {si === 0 && labelText && (
+                        <span className="text-[9px] text-white font-semibold truncate px-1.5 leading-none drop-shadow-sm">
+                          {labelText}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })
               })}
 
-              {/* Overflow indicator */}
+              {/* "+N more" overflow */}
               {hiddenCount > 0 && (
                 <div
                   className="absolute text-[9px] text-slate-400 font-medium"
@@ -242,18 +288,30 @@ export function CalendarMonthView({ worksets }: CalendarMonthViewProps) {
       </div>
 
       {/* Legend */}
-      <div className="border-t border-slate-200 px-4 py-3 flex items-center gap-5 flex-wrap bg-slate-50">
-        {(['DAX', 'DMO', 'Scribing'] as const).map(wf => (
-          <div key={wf} className="flex items-center gap-1.5">
-            <div
-              className="w-5 h-3 rounded-sm"
-              style={{ backgroundColor: WORKFLOW_COLORS[wf], opacity: 0.82 }}
-            />
-            <span className="text-[10px] text-slate-500">{wf}</span>
+      <div className="border-t border-slate-200 px-4 py-3 flex items-center gap-6 flex-wrap bg-slate-50">
+        {/* Phase texture legend */}
+        <div className="flex items-center gap-4">
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Phases</span>
+          {PHASE_LEGEND.map(p => (
+            <div key={p.key} className="flex items-center gap-1.5">
+              <div
+                className="w-8 h-3 rounded-sm border border-slate-300/50"
+                style={{
+                  backgroundColor: '#6366f1',
+                  ...PHASE_PATTERN_STYLE[p.key],
+                  opacity: 0.9,
+                }}
+              />
+              <span className="text-[10px] text-slate-500">{p.label}</span>
+            </div>
+          ))}
+        </div>
+        <div className="w-px h-4 bg-slate-200" />
+        {/* Today indicator */}
+        <div className="flex items-center gap-1.5">
+          <div className="w-5 h-5 rounded-full bg-brand-500 flex items-center justify-center">
+            <span className="text-[8px] text-white font-bold">●</span>
           </div>
-        ))}
-        <div className="ml-2 flex items-center gap-1.5">
-          <div className="w-5 h-3 rounded-sm bg-brand-500" />
           <span className="text-[10px] text-slate-500">Today</span>
         </div>
       </div>

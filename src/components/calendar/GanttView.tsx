@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react'
 import { Workset, PhaseTimeline } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
-import { WORKFLOW_COLORS, PHASE_HEX, adjustPhaseDate, calculateETA, EditablePhaseField } from '@/lib/eta-calculator'
+import { PHASE_HEX, adjustPhaseDate, calculateETA, EditablePhaseField } from '@/lib/eta-calculator'
+import { getLocaleColor, PHASE_PATTERN_STYLE, PHASE_LEGEND, type PhaseKey } from '@/lib/locale-colors'
 import { useStore } from '@/lib/store'
 import { differenceInCalendarDays, parseISO, addDays, format } from 'date-fns'
 import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
@@ -12,34 +13,29 @@ interface GanttViewProps {
   worksets: Workset[]
 }
 
-const PHASE_META = [
-  { key: 'p1',  label: '1P+IAA', color: PHASE_HEX.p1  },
-  { key: 'rev', label: 'REV',    color: PHASE_HEX.rev  },
-  { key: 'p2',  label: '2P',     color: PHASE_HEX.p2   },
-  { key: 'phi', label: 'PHI',    color: PHASE_HEX.phi  },
-]
 
 const LABEL_WIDTH = 260
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'TH', 'F', 'S'] as const
 
-function getPhaseSegments(ws: Workset, _spanStart: Date): Array<{ left: number; width: number; color: string; label: string }> {
+type GanttSeg = { left: number; width: number; phaseKey: PhaseKey; label: string }
+
+function getPhaseSegments(ws: Workset): GanttSeg[] {
   if (!ws.phases) return []
   const p       = ws.phases
   const wsStart = parseISO(ws.startDate)
   const total   = differenceInCalendarDays(parseISO(p.etaDate), wsStart) + 1 || 1
-  // Segments are expressed as % WITHIN the workset's own span (0 = workset start, 100 = etaDate).
-  // The rendering code then maps these onto the chart via: chartLeft + (seg.left/100) * chartWidth.
-  const segs = [
-    { start: ws.startDate, end: p.p1End,   color: PHASE_HEX.p1,  label: '1P+IAA' },
-    { start: p.rev1End,    end: p.rev1End, color: PHASE_HEX.rev, label: 'REV'    },
-    { start: p.p2Start,    end: p.p2End,   color: PHASE_HEX.p2,  label: '2P'     },
-    { start: p.phiStart,   end: p.etaDate, color: PHASE_HEX.phi, label: 'PHI'    },
+  // Segments expressed as % WITHIN the workset's own span.
+  const segs: Array<{ start: string; end: string; phaseKey: PhaseKey; label: string }> = [
+    { start: ws.startDate, end: p.p1End,   phaseKey: 'p1',  label: '1P+IAA' },
+    { start: p.p1End,      end: p.rev1End, phaseKey: 'rev', label: 'REV'    },
+    { start: p.p2Start,    end: p.p2End,   phaseKey: 'p2',  label: '2P'     },
+    { start: p.phiStart,   end: p.etaDate, phaseKey: 'phi', label: 'PHI'    },
   ]
   return segs.map(s => {
-    const segOffset = differenceInCalendarDays(parseISO(s.start), wsStart)  // offset from workset start
-    const segLen    = differenceInCalendarDays(parseISO(s.end), parseISO(s.start)) + 1
-    return { left: (segOffset / total) * 100, width: (segLen / total) * 100, color: s.color, label: s.label }
+    const segOffset = differenceInCalendarDays(parseISO(s.start), wsStart)
+    const segLen    = differenceInCalendarDays(parseISO(s.end),   parseISO(s.start)) + 1
+    return { left: (segOffset / total) * 100, width: (segLen / total) * 100, phaseKey: s.phaseKey, label: s.label }
   })
 }
 
@@ -205,7 +201,8 @@ export function GanttView({ worksets }: GanttViewProps) {
           const end      = parseISO(ws.revisedEta ?? ws.eta)
           const leftPct  = (differenceInCalendarDays(start, spanStart) / spanDays) * 100
           const widthPct = ((differenceInCalendarDays(end, start) + 1) / spanDays) * 100
-          const segs     = getPhaseSegments(ws, spanStart)
+          const segs     = getPhaseSegments(ws)
+          const locColor = getLocaleColor(ws.locale)
           const isExpanded = expandedId === ws.id
           const p        = ws.phases
           const hs       = p?.headStart
@@ -248,20 +245,35 @@ export function GanttView({ worksets }: GanttViewProps) {
                     />
                   )}
 
-                  {/* Continuous background spine — always visible, spans start → ETA */}
+                  {/* Continuous spine — locale color, low opacity */}
                   <div
                     className="absolute top-1/2 -translate-y-1/2 h-2 rounded-full"
-                    style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`, backgroundColor: WORKFLOW_COLORS[ws.workflow], opacity: 0.35 }}
+                    style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`, backgroundColor: locColor, opacity: 0.25 }}
                   />
 
-                  {/* Phase segments overlay — positioned relative to workset span */}
+                  {/* Phase segments — locale color base + phase texture */}
                   {segs.length > 0 ? segs.map((seg, i) => (
-                    <div key={i} className="absolute top-1/2 -translate-y-1/2 h-5 rounded-sm" title={seg.label}
-                      style={{ left: `${Math.max(0, leftPct + (seg.left / 100) * widthPct)}%`, width: `${Math.max(0.4, (seg.width / 100) * widthPct)}%`, backgroundColor: seg.color, opacity: 0.88 }} />
+                    <div key={i} className="absolute top-1/2 -translate-y-1/2 h-5 rounded-sm"
+                      title={`${ws.locale} · ${ws.workflow} — ${seg.label}`}
+                      style={{
+                        left:            `${Math.max(0, leftPct + (seg.left / 100) * widthPct)}%`,
+                        width:           `${Math.max(0.4, (seg.width / 100) * widthPct)}%`,
+                        backgroundColor: locColor,
+                        opacity:         0.88,
+                        ...PHASE_PATTERN_STYLE[seg.phaseKey],
+                      }} />
                   )) : (
                     <div className="absolute top-1/2 -translate-y-1/2 h-5 rounded-full"
-                      style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`, backgroundColor: WORKFLOW_COLORS[ws.workflow], opacity: 0.75 }} />
+                      style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`, backgroundColor: locColor, opacity: 0.80 }} />
                   )}
+
+                  {/* Locale · workflow badge */}
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 text-[8px] font-semibold text-white bg-black/30 px-1 py-0.5 rounded-sm whitespace-nowrap pointer-events-none z-10"
+                    style={{ left: `${Math.max(0, leftPct) + 0.3}%` }}
+                  >
+                    {ws.locale} · {ws.workflow}
+                  </div>
 
                   <div className="absolute top-1/2 -translate-y-1/2 text-[9px] font-medium text-slate-600 whitespace-nowrap"
                     style={{ left: `${Math.min(leftPct + widthPct + 0.5, 96)}%` }}>
@@ -309,12 +321,18 @@ export function GanttView({ worksets }: GanttViewProps) {
 
       {/* Legend */}
       <div className="border-t border-slate-200 px-4 py-3 flex items-center gap-5 flex-wrap bg-slate-50">
-        {PHASE_META.map(p => (
-          <div key={p.key} className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: p.color, opacity: 0.85 }} />
-            <span className="text-[10px] text-slate-500">{p.label}</span>
+        {/* Phase texture legend */}
+        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Phases</span>
+        {PHASE_LEGEND.map(ph => (
+          <div key={ph.key} className="flex items-center gap-1.5">
+            <div
+              className="w-6 h-3 rounded-sm border border-slate-300/50"
+              style={{ backgroundColor: '#6366f1', ...PHASE_PATTERN_STYLE[ph.key], opacity: 0.88 }}
+            />
+            <span className="text-[10px] text-slate-500">{ph.label}</span>
           </div>
         ))}
+        <div className="w-px h-3 bg-slate-300" />
         <div className="flex items-center gap-1.5">
           <div className="w-px h-3 bg-red-400" />
           <span className="text-[10px] text-slate-500">Today</span>
@@ -325,7 +343,7 @@ export function GanttView({ worksets }: GanttViewProps) {
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm border border-dashed border-blue-300" style={{ backgroundColor: '#bfdbfe', opacity: 0.7 }} />
-          <span className="text-[10px] text-slate-500">Head start (Set 2 pre-work)</span>
+          <span className="text-[10px] text-slate-500">Head start</span>
         </div>
         <div className="flex items-center gap-1.5">
           <ChevronRight className="w-3 h-3 text-slate-400" />
