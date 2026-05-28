@@ -24,7 +24,7 @@ interface AppStore {
   // ─── Actions ─────────────────────────────────────────────────────────────────
   initialize: () => Promise<void>
   reloadWorksets: () => Promise<void>
-  addWorkset: (data: Omit<Workset, 'id' | 'worksetId' | 'createdAt' | 'updatedAt' | 'auditTrail'>) => Workset
+  addWorkset: (data: Omit<Workset, 'id' | 'worksetId' | 'createdAt' | 'updatedAt' | 'auditTrail'>) => Promise<Workset>
   updateWorkset: (id: string, updates: Partial<Workset>, reason?: string) => void
   deleteWorkset: (id: string) => void
   setCurrentUser: (userId: string) => void
@@ -80,7 +80,29 @@ export const useStore = create<AppStore>()(
         // Mark initialized FIRST so that subsequent AppLayout mounts (e.g. after
         // router.push) don't re-enter and overwrite any optimistic store updates.
         set({ isInitialized: true })
-        return get().reloadWorksets()
+
+        // Load worksets + real session user in parallel
+        await Promise.all([
+          get().reloadWorksets(),
+          fetch('/api/auth/me')
+            .then(r => r.ok ? r.json() as Promise<{ user: { id: string; name: string; email: string; role: string; locale: string | null } }> : null)
+            .then(data => {
+              if (!data?.user) return
+              const u = data.user
+              set({
+                currentUser: {
+                  id:       u.id,
+                  name:     u.name,
+                  email:    u.email,
+                  role:     u.role as User['role'],
+                  locale:   u.locale ?? null,
+                  team:     '',
+                  initials: u.name.split(' ').map((w: string) => w[0] ?? '').join('').slice(0, 2).toUpperCase(),
+                },
+              })
+            })
+            .catch(() => { /* keep MOCK_USERS[0] if auth not available */ }),
+        ])
       },
 
       reloadWorksets: async () => {
@@ -120,7 +142,7 @@ export const useStore = create<AppStore>()(
         set({ worksets: updated, notifications })  // intentionally no isInitialized change
       },
 
-      addWorkset: (data) => {
+      addWorkset: async (data) => {
         const worksets = get().worksets
         const newWorkset: Workset = {
           ...data,
@@ -130,14 +152,23 @@ export const useStore = create<AppStore>()(
           updatedAt: new Date().toISOString().split('T')[0],
           auditTrail: [],
         }
-        // Optimistic update
+        // Optimistic update — show immediately in the list
         set(state => ({ worksets: [newWorkset, ...state.worksets] }))
-        // Async DB sync (fire-and-forget)
-        fetch('/api/worksets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newWorkset),
-        }).catch(console.error)
+        // Await DB write; roll back on failure so the store stays consistent
+        try {
+          const res = await fetch('/api/worksets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newWorkset),
+          })
+          if (!res.ok) {
+            set(state => ({ worksets: state.worksets.filter(w => w.id !== newWorkset.id) }))
+            throw new Error('Failed to save workset to database')
+          }
+        } catch (err) {
+          set(state => ({ worksets: state.worksets.filter(w => w.id !== newWorkset.id) }))
+          throw err
+        }
         return newWorkset
       },
 
@@ -307,8 +338,18 @@ export const useStore = create<AppStore>()(
       },
 
       getFilteredWorksets: () => {
-        const { worksets, filters } = get()
+        const { worksets, filters, currentUser } = get()
         return worksets.filter(ws => {
+          // ── Role-based visibility ──────────────────────────────────────────────
+          // admin / pm / viewer  → see all worksets (no locale restriction)
+          // lead                 → see all worksets from their own locale
+          // fte / freelancer     → see all worksets from their own locale
+          const { role, locale: userLocale } = currentUser
+          if ((role === 'lead' || role === 'fte' || role === 'freelancer') && userLocale) {
+            if (ws.locale !== userLocale) return false
+          }
+
+          // ── UI filter state ────────────────────────────────────────────────────
           if (filters.search) {
             const q = filters.search.toLowerCase()
             if (!ws.name.toLowerCase().includes(q) &&

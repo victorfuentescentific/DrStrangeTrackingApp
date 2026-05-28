@@ -34,7 +34,7 @@ type FormData = {
 
 interface WorksetFormProps {
   initial?: Workset
-  onSubmit: (data: FormData) => void
+  onSubmit: (data: FormData) => void | Promise<void>
   onCancel: () => void
   isEdit?: boolean
 }

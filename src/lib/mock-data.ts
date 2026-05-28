@@ -1,11 +1,11 @@
 import { User, Workset } from './types'
 
 export const MOCK_USERS: User[] = [
-  { id: 'u1', name: 'Admin User',  email: 'admin@company.com',  role: 'admin',  team: 'Platform', initials: 'AU' },
-  { id: 'u2', name: 'PM User 1',   email: 'pm1@company.com',    role: 'pm',     team: 'EU LLM',   initials: 'P1' },
-  { id: 'u3', name: 'PM User 2',   email: 'pm2@company.com',    role: 'pm',     team: 'EU LLM',   initials: 'P2' },
-  { id: 'u4', name: 'Lead User',   email: 'lead@company.com',   role: 'lead',   team: 'EU LLM',   initials: 'LU' },
-  { id: 'u5', name: 'Viewer User', email: 'viewer@company.com', role: 'viewer', team: 'EU LLM',   initials: 'VU' },
+  { id: 'u1', name: 'Admin User',  email: 'admin@company.com',  role: 'admin',  locale: null,     team: 'Platform', initials: 'AU' },
+  { id: 'u2', name: 'PM User 1',   email: 'pm1@company.com',    role: 'pm',     locale: null,     team: 'EU LLM',   initials: 'P1' },
+  { id: 'u3', name: 'PM User 2',   email: 'pm2@company.com',    role: 'pm',     locale: null,     team: 'EU LLM',   initials: 'P2' },
+  { id: 'u4', name: 'Lead User',   email: 'lead@company.com',   role: 'lead',   locale: 'en_GB',  team: 'EU LLM',   initials: 'LU' },
+  { id: 'u5', name: 'Viewer User', email: 'viewer@company.com', role: 'viewer', locale: null,     team: 'EU LLM',   initials: 'VU' },
 ]
 
 // ─── Locale list grouped by region ───────────────────────────────────────────

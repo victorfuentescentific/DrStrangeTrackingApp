@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { WorksetFilters } from '@/components/worksets/WorksetFilters'
 import { WorksetTable } from '@/components/worksets/WorksetTable'
@@ -18,6 +18,13 @@ export default function WorksetsPage() {
 
   const [recalcState, setRecalcState] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [recalcMsg,  setRecalcMsg]   = useState<string | null>(null)
+
+  // Reload from DB every time the user visits this page so cross-user
+  // changes (e.g. a workset created by another admin) are always visible.
+  useEffect(() => {
+    void reloadWorksets()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleExport = () => {
     const json = JSON.stringify(worksets, null, 2)

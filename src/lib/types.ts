@@ -11,7 +11,7 @@ export type TeamType    = 'Transcription' | 'Scribing'
 export type Region      = 'EU' | 'US' | 'IN'
 export type Priority    = 'low' | 'medium' | 'high' | 'critical'
 export type RiskLevel   = 'low' | 'medium' | 'high' | 'critical'
-export type UserRole    = 'admin' | 'pm' | 'lead' | 'viewer'
+export type UserRole    = 'admin' | 'pm' | 'lead' | 'fte' | 'freelancer' | 'viewer'
 export type NotificationType    = 'reminder' | 'escalation' | 'blocked' | 'phase' | 'update' | 'info'
 export type NotificationPriority = 'low' | 'medium' | 'high'
 
@@ -20,6 +20,7 @@ export interface User {
   name: string
   email: string
   role: UserRole
+  locale: string | null   // null for roles without a fixed locale (admin, pm)
   team: string
   initials: string
 }
@@ -134,8 +135,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, {
   canEscalate: boolean
   canViewAll: boolean
 }> = {
-  admin:  { canCreate: true,  canEdit: true,  canDelete: true,  canEscalate: true,  canViewAll: true  },
-  pm:     { canCreate: true,  canEdit: true,  canDelete: false, canEscalate: true,  canViewAll: true  },
-  lead:   { canCreate: true,  canEdit: true,  canDelete: false, canEscalate: true,  canViewAll: true  },
-  viewer: { canCreate: false, canEdit: false, canDelete: false, canEscalate: false, canViewAll: true  },
+  admin:      { canCreate: true,  canEdit: true,  canDelete: true,  canEscalate: true,  canViewAll: true  },
+  pm:         { canCreate: true,  canEdit: true,  canDelete: false, canEscalate: true,  canViewAll: true  },
+  lead:       { canCreate: true,  canEdit: true,  canDelete: false, canEscalate: true,  canViewAll: false },
+  fte:        { canCreate: false, canEdit: false, canDelete: false, canEscalate: false, canViewAll: false },
+  freelancer: { canCreate: false, canEdit: false, canDelete: false, canEscalate: false, canViewAll: false },
+  viewer:     { canCreate: false, canEdit: false, canDelete: false, canEscalate: false, canViewAll: true  },
 }
