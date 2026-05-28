@@ -248,20 +248,31 @@ export function GanttView({ worksets }: GanttViewProps) {
                     />
                   )}
 
-                  {/* Continuous background spine — always visible, spans start → ETA */}
+                  {/* Single continuous workset bar — spans full startDate → ETA */}
                   <div
-                    className="absolute top-1/2 -translate-y-1/2 h-2 rounded-full"
-                    style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`, backgroundColor: WORKFLOW_COLORS[ws.workflow], opacity: 0.35 }}
-                  />
-
-                  {/* Phase segments overlay — positioned relative to workset span */}
-                  {segs.length > 0 ? segs.map((seg, i) => (
-                    <div key={i} className="absolute top-1/2 -translate-y-1/2 h-5 rounded-sm" title={seg.label}
-                      style={{ left: `${Math.max(0, leftPct + (seg.left / 100) * widthPct)}%`, width: `${Math.max(0.4, (seg.width / 100) * widthPct)}%`, backgroundColor: seg.color, opacity: 0.88 }} />
-                  )) : (
-                    <div className="absolute top-1/2 -translate-y-1/2 h-5 rounded-full"
-                      style={{ left: `${Math.max(0, leftPct)}%`, width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`, backgroundColor: WORKFLOW_COLORS[ws.workflow], opacity: 0.75 }} />
-                  )}
+                    className="absolute top-1/2 -translate-y-1/2 h-6 rounded-md overflow-hidden"
+                    style={{
+                      left:  `${Math.max(0, leftPct)}%`,
+                      width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`,
+                      backgroundColor: WORKFLOW_COLORS[ws.workflow],
+                      opacity: 0.80,
+                    }}
+                  >
+                    {/* Phase color sub-bands inside the bar */}
+                    {segs.map((seg, i) => (
+                      <div
+                        key={i}
+                        className="absolute top-1/2 -translate-y-1/2 h-2"
+                        title={seg.label}
+                        style={{
+                          left:            `${seg.left}%`,
+                          width:           `${Math.max(0.4, seg.width)}%`,
+                          backgroundColor: seg.color,
+                          opacity:         0.6,
+                        }}
+                      />
+                    ))}
+                  </div>
 
                   <div className="absolute top-1/2 -translate-y-1/2 text-[9px] font-medium text-slate-600 whitespace-nowrap"
                     style={{ left: `${Math.min(leftPct + widthPct + 0.5, 96)}%` }}>
