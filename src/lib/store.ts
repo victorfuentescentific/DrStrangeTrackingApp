@@ -77,7 +77,9 @@ export const useStore = create<AppStore>()(
 
       initialize: async () => {
         if (get().isInitialized) return
-        // Load worksets — same logic as reloadWorksets, guarded by isInitialized
+        // Mark initialized FIRST so that subsequent AppLayout mounts (e.g. after
+        // router.push) don't re-enter and overwrite any optimistic store updates.
+        set({ isInitialized: true })
         return get().reloadWorksets()
       },
 

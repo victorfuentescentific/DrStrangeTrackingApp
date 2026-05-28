@@ -131,7 +131,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
     if (!isBackToBack || !form.predecessorId) return
     const n = parseInt(form.teamSize)
     const pred = worksets.find(w => w.id === form.predecessorId)
-    if (!pred?.phases || !form.locale || n < 5) return
+    if (!pred?.phases || !form.locale || n < 1) return
     const result = calculateSuccessorETA(pred.phases, form.workflow, form.locale, n)
     setEtaSuggestion(result)
     set('eta', result.etaDate)
@@ -148,7 +148,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
   useEffect(() => {
     if (isBackToBack) return
     const n = parseInt(form.teamSize)
-    if (!form.locale || !form.startDate || n < 5) return
+    if (!form.locale || !form.startDate || n < 1) return
     const result = calculateETA(form.workflow, form.locale, n, form.startDate)
     setEtaSuggestion(result)
     if (!form.eta || form.eta === '') {

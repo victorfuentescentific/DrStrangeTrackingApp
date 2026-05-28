@@ -24,6 +24,11 @@ export const TIER1_TEAM_SIZES: Record<string, { trans: number; scrib: number }> 
   de_DE: { trans: 11, scrib: 11 },
   nl_NL: { trans: 11, scrib: 10 },
   fr_FR: { trans: 11, scrib: 11 },
+  // Tier 2 (Nordic) locales — 3-person part-time teams
+  da_DK: { trans: 3,  scrib: 3  },
+  nb_NO: { trans: 3,  scrib: 3  },
+  fi_FI: { trans: 3,  scrib: 3  },
+  sv_SE: { trans: 3,  scrib: 3  },
 }
 
 // Tier 2 locales (4hr/day — ETA is estimated, not validated)

@@ -32,7 +32,7 @@ export default function NewWorksetPage() {
             onSubmit={(form) => {
               const n = parseInt(form.teamSize) || 11
               // For sequential worksets, linkSuccessor calculates phases; skip standalone calc
-              const phases = !form.predecessorId && form.locale && form.startDate && n >= 5
+              const phases = !form.predecessorId && form.locale && form.startDate && n >= 1
                 ? calculateETA(form.workflow, form.locale, n, form.startDate)
                 : undefined
               const newWorkset = addWorkset({
