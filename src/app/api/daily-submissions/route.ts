@@ -77,9 +77,14 @@ export async function POST(req: NextRequest) {
   const totalNonProductionHours = body.totalNonProductionHours as number | undefined
   const npHours2pass    = body.npHours2pass    as number | undefined
   const npHoursPhi      = body.npHoursPhi      as number | undefined
+  const npHoursIAA      = body.npHoursIAA      as number | undefined
   const npHoursTraining = body.npHoursTraining as number | undefined
   const npHoursReview   = body.npHoursReview   as number | undefined
+  const npHoursWaiting  = body.npHoursWaiting  as number | undefined
+  const npHoursMeetings = body.npHoursMeetings as number | undefined
+  const npHoursIT       = body.npHoursIT       as number | undefined
   const npHoursOther    = body.npHoursOther    as number | undefined
+  const otherWorkingRemarks = typeof body.otherWorkingRemarks === 'string' ? body.otherWorkingRemarks : ''
   const totalWorkingHours = body.totalWorkingHours as number | undefined
   const remarks = body.remarks as string | undefined
 
@@ -102,6 +107,7 @@ export async function POST(req: NextRequest) {
   if (typeof npHoursTraining !== 'number') errors.push('npHoursTraining is required')
   if (typeof npHoursReview   !== 'number') errors.push('npHoursReview is required')
   if (typeof npHoursOther    !== 'number') errors.push('npHoursOther is required')
+  // New fields are optional (default 0) to remain backward compatible
   if (typeof totalWorkingHours !== 'number' || totalWorkingHours < 0)
     errors.push('totalWorkingHours must be a non-negative number')
   if (!remarks || typeof remarks !== 'string' || remarks.trim() === '')
@@ -130,9 +136,14 @@ export async function POST(req: NextRequest) {
     totalNonProductionHours: totalNonProductionHours!,
     npHours2pass:          npHours2pass!,
     npHoursPhi:            npHoursPhi!,
+    npHoursIAA:            typeof npHoursIAA      === 'number' ? npHoursIAA      : 0,
     npHoursTraining:       npHoursTraining!,
     npHoursReview:         npHoursReview!,
+    npHoursWaiting:        typeof npHoursWaiting  === 'number' ? npHoursWaiting  : 0,
+    npHoursMeetings:       typeof npHoursMeetings === 'number' ? npHoursMeetings : 0,
+    npHoursIT:             typeof npHoursIT       === 'number' ? npHoursIT       : 0,
     npHoursOther:          npHoursOther!,
+    otherWorkingRemarks,
     totalWorkingHours:     totalWorkingHours!,
     remarks:               remarks!.trim(),
     miscCost,
@@ -166,9 +177,14 @@ export async function PATCH(req: NextRequest) {
   if (body.totalNonProductionHours !== undefined) updates.totalNonProductionHours = body.totalNonProductionHours as number
   if (body.npHours2pass            !== undefined) updates.npHours2pass            = body.npHours2pass as number
   if (body.npHoursPhi              !== undefined) updates.npHoursPhi              = body.npHoursPhi as number
+  if (body.npHoursIAA              !== undefined) updates.npHoursIAA              = body.npHoursIAA as number
   if (body.npHoursTraining         !== undefined) updates.npHoursTraining         = body.npHoursTraining as number
   if (body.npHoursReview           !== undefined) updates.npHoursReview           = body.npHoursReview as number
+  if (body.npHoursWaiting          !== undefined) updates.npHoursWaiting          = body.npHoursWaiting as number
+  if (body.npHoursMeetings         !== undefined) updates.npHoursMeetings         = body.npHoursMeetings as number
+  if (body.npHoursIT               !== undefined) updates.npHoursIT               = body.npHoursIT as number
   if (body.npHoursOther            !== undefined) updates.npHoursOther            = body.npHoursOther as number
+  if (body.otherWorkingRemarks     !== undefined) updates.otherWorkingRemarks     = body.otherWorkingRemarks as string
   if (body.totalWorkingHours       !== undefined) updates.totalWorkingHours       = body.totalWorkingHours as number
   if (body.remarks                 !== undefined) updates.remarks                 = body.remarks as string
   if (body.miscCost                !== undefined) updates.miscCost                = body.miscCost as number | null

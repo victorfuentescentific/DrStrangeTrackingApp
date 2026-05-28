@@ -14,8 +14,6 @@ import { SessionUser } from '@/lib/auth'
 const LOCALES = ['en_GB', 'de_DE', 'nl_NL', 'fr_FR', 'da_DK', 'nb_NO'] as const
 type Locale = (typeof LOCALES)[number]
 
-const MAX_HOURS = 8
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function todayISO() {
@@ -52,9 +50,14 @@ interface DailySubmissionRow {
   totalNonProductionHours: number
   npHours2pass: number
   npHoursPhi: number
+  npHoursIAA: number
   npHoursTraining: number
   npHoursReview: number
+  npHoursWaiting: number
+  npHoursMeetings: number
+  npHoursIT: number
   npHoursOther: number
+  otherWorkingRemarks: string
   totalWorkingHours: number
   remarks: string
   miscCost: number | null
@@ -93,7 +96,7 @@ interface NumInputProps {
   disabled?: boolean
 }
 
-function NumInput({ value, onChange, min = 0, max = 8, step = 0.5, disabled = false }: NumInputProps) {
+function NumInput({ value, onChange, min = 0, max = 24, step = 0.5, disabled = false }: NumInputProps) {
   function decrement() {
     const next = round1(value - step)
     if (next >= min) onChange(next)
@@ -142,14 +145,15 @@ function NumInput({ value, onChange, min = 0, max = 8, step = 0.5, disabled = fa
 // ─── TotalHoursDisplay ────────────────────────────────────────────────────────
 
 function TotalHoursDisplay({ total }: { total: number }) {
-  const pct = Math.min((total / MAX_HOURS) * 100, 100)
+  const REF_HOURS = 8
+  const pct = Math.min((total / REF_HOURS) * 100, 100)
   return (
     <div className="space-y-2">
       <div className="flex items-baseline gap-1">
         <span className="text-3xl font-bold text-slate-800 tabular-nums">
           {total % 1 === 0 ? `${total}.0` : total}
         </span>
-        <span className="text-base text-slate-500">/ {MAX_HOURS} h</span>
+        <span className="text-base text-slate-500">h total</span>
       </div>
       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
         <div
@@ -157,7 +161,7 @@ function TotalHoursDisplay({ total }: { total: number }) {
           style={{ width: `${pct}%` }}
         />
       </div>
-      <p className="text-xs text-slate-400">Auto-calculated: Production + Non-Production</p>
+      <p className="text-xs text-slate-400">Auto-calculated: Production + Other-Working</p>
     </div>
   )
 }
@@ -255,7 +259,7 @@ function SuccessCard({ data, onAnother }: { data: SuccessData; onAnother: () => 
         )}
         <div className="text-sm text-green-700 mt-2 space-y-0.5">
           <p>{fmtDate(data.date)} · {data.locale}</p>
-          <p>Production: {data.productionHours}h · NP: {data.totalNonProductionHours}h · Total: {data.totalWorkingHours}h</p>
+          <p>Production: {data.productionHours}h · Other-Working: {data.totalNonProductionHours}h · Total: {data.totalWorkingHours}h</p>
           {data.remarks && (
             <p className="text-xs text-green-600 mt-1 italic line-clamp-2">"{data.remarks}"</p>
           )}
@@ -314,9 +318,13 @@ function HoursForm({ session, forUser }: HoursFormProps) {
   const [totalNonProductionHours, setTotalNonProductionHours] = useState(0)
   const [npHours2pass,            setNpHours2pass]            = useState(0)
   const [npHoursPhi,              setNpHoursPhi]              = useState(0)
+  const [npHoursIAA,              setNpHoursIAA]              = useState(0)
   const [npHoursTraining,         setNpHoursTraining]         = useState(0)
   const [npHoursReview,           setNpHoursReview]           = useState(0)
-  const [npHoursOther,            setNpHoursOther]            = useState(0)
+  const [npHoursWaiting,          setNpHoursWaiting]          = useState(0)
+  const [npHoursMeetings,         setNpHoursMeetings]         = useState(0)
+  const [npHoursIT,               setNpHoursIT]               = useState(0)
+  const [otherWorkingRemarks,     setOtherWorkingRemarks]     = useState('')
   const [remarks,                 setRemarks]                 = useState('')
   const [miscCost,                setMiscCost]                = useState<string>('')
   const [invoiceFiles,            setInvoiceFiles]            = useState<File[]>([])
@@ -326,11 +334,14 @@ function HoursForm({ session, forUser }: HoursFormProps) {
   const [success,    setSuccess]    = useState<SuccessData | null>(null)
 
   // Derived
-  const npSubtotal = round1(npHours2pass + npHoursPhi + npHoursTraining + npHoursReview + npHoursOther)
-  const npMatch    = Math.abs(npSubtotal - totalNonProductionHours) < 0.001
+  const npSubtotal = round1(
+    npHours2pass + npHoursPhi + npHoursIAA + npHoursTraining + npHoursReview +
+    npHoursWaiting + npHoursMeetings + npHoursIT
+  )
+  const npMatch           = Math.abs(npSubtotal - totalNonProductionHours) < 0.001
   const totalWorkingHours = round1(productionHours + (hasNonProduction ? totalNonProductionHours : 0))
 
-  // Reset locale when forUser changes
+  // Sync locale when forUser changes
   useEffect(() => {
     setLocale(forUser?.locale ?? session.locale ?? 'en_GB')
   }, [forUser, session.locale])
@@ -343,9 +354,13 @@ function HoursForm({ session, forUser }: HoursFormProps) {
     setTotalNonProductionHours(0)
     setNpHours2pass(0)
     setNpHoursPhi(0)
+    setNpHoursIAA(0)
     setNpHoursTraining(0)
     setNpHoursReview(0)
-    setNpHoursOther(0)
+    setNpHoursWaiting(0)
+    setNpHoursMeetings(0)
+    setNpHoursIT(0)
+    setOtherWorkingRemarks('')
     setRemarks('')
     setMiscCost('')
     setInvoiceFiles([])
@@ -361,11 +376,11 @@ function HoursForm({ session, forUser }: HoursFormProps) {
     const errs: string[] = []
 
     if (!date) errs.push('Date is required.')
-    if (hasNonProduction === null) errs.push('Please answer whether you have non-production hours.')
+    if (hasNonProduction === null) errs.push('Please answer whether you have other-working hours.')
 
     if (hasNonProduction) {
-      if (totalNonProductionHours <= 0) errs.push('Total non-production hours must be > 0.')
-      if (!npMatch) errs.push(`Sub-category breakdown (${npSubtotal}h) must equal declared NP total (${totalNonProductionHours}h).`)
+      if (totalNonProductionHours <= 0) errs.push('Total other-working hours must be > 0.')
+      if (!npMatch) errs.push(`Sub-category breakdown (${npSubtotal}h) must equal declared total (${totalNonProductionHours}h).`)
     }
 
     if (!remarks.trim()) errs.push('Remarks are required.')
@@ -405,13 +420,18 @@ function HoursForm({ session, forUser }: HoursFormProps) {
         date,
         locale,
         productionHours,
-        hasNonProduction: !!hasNonProduction,
-        totalNonProductionHours: effectiveNP,
-        npHours2pass:    hasNonProduction ? npHours2pass    : 0,
-        npHoursPhi:      hasNonProduction ? npHoursPhi      : 0,
-        npHoursTraining: hasNonProduction ? npHoursTraining : 0,
-        npHoursReview:   hasNonProduction ? npHoursReview   : 0,
-        npHoursOther:    hasNonProduction ? npHoursOther    : 0,
+        hasNonProduction:         !!hasNonProduction,
+        totalNonProductionHours:  effectiveNP,
+        npHours2pass:     hasNonProduction ? npHours2pass    : 0,
+        npHoursPhi:       hasNonProduction ? npHoursPhi      : 0,
+        npHoursIAA:       hasNonProduction ? npHoursIAA      : 0,
+        npHoursTraining:  hasNonProduction ? npHoursTraining : 0,
+        npHoursReview:    hasNonProduction ? npHoursReview   : 0,
+        npHoursWaiting:   hasNonProduction ? npHoursWaiting  : 0,
+        npHoursMeetings:  hasNonProduction ? npHoursMeetings : 0,
+        npHoursIT:        hasNonProduction ? npHoursIT       : 0,
+        npHoursOther:     0,
+        otherWorkingRemarks: hasNonProduction ? otherWorkingRemarks.trim() : '',
         totalWorkingHours: round1(productionHours + effectiveNP),
         remarks: remarks.trim(),
         miscCost: parsedMiscCost,
@@ -497,21 +517,21 @@ function HoursForm({ session, forUser }: HoursFormProps) {
         />
       </SectionCard>
 
-      {/* Q5 Production Hours */}
+      {/* Q4 Production Hours */}
       <SectionCard>
         <FieldLabel
           label="4. Production Hours"
-          hint="Transcription Workset / Report / IAA hours"
+          hint="Transcription / Scribing"
           required
         />
-        <NumInput value={productionHours} onChange={setProductionHours} min={0} max={8} step={0.5} />
+        <NumInput value={productionHours} onChange={setProductionHours} min={0} step={0.5} />
       </SectionCard>
 
-      {/* Q6 Non-Production toggle */}
+      {/* Q5 Other-Working toggle */}
       <SectionCard>
         <FieldLabel
-          label="5. Any non-production hours today?"
-          hint="Training, meetings, PHI, waiting for worksets, admin"
+          label="5. Any other-working hours today?"
+          hint="Training, meetings, PHI, IAA, waiting for worksets, admin"
           required
         />
         <div className="flex gap-3 mt-1">
@@ -535,25 +555,23 @@ function HoursForm({ session, forUser }: HoursFormProps) {
         </div>
       </SectionCard>
 
-      {/* Q7-Q12 Non-production breakdown (conditional) */}
+      {/* Q6-Q15 Other-Working breakdown (conditional) */}
       {hasNonProduction === true && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-4">
-          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Non-Production Breakdown</p>
+          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Other-Working Hours Breakdown</p>
 
-          {/* Q7 Total NP hours */}
+          {/* Q6 Total OW hours */}
           <div>
             <FieldLabel
-              label="6. Total Non-Production Hours"
+              label="6. Total Other-Working Hours"
               required
             />
             <NumInput
               value={totalNonProductionHours}
               onChange={setTotalNonProductionHours}
               min={0}
-              max={8}
               step={0.5}
             />
-            {/* Live sub-total counter */}
             <div className={cn(
               'mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
               npMatch ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700',
@@ -564,67 +582,94 @@ function HoursForm({ session, forUser }: HoursFormProps) {
             </div>
           </div>
 
-          {/* Q8 2Pass */}
+          {/* Q7 2Pass */}
           <div>
             <FieldLabel label="7. 2Pass Hours" hint="Enter 0 if not applicable" />
-            <NumInput value={npHours2pass} onChange={setNpHours2pass} min={0} max={8} step={0.5} />
+            <NumInput value={npHours2pass} onChange={setNpHours2pass} min={0} step={0.5} />
           </div>
 
-          {/* Q9 PHI */}
+          {/* Q8 PHI */}
           <div>
             <FieldLabel label="8. PHI Hours" hint="Enter 0 if not applicable" />
-            <NumInput value={npHoursPhi} onChange={setNpHoursPhi} min={0} max={8} step={0.5} />
+            <NumInput value={npHoursPhi} onChange={setNpHoursPhi} min={0} step={0.5} />
+          </div>
+
+          {/* Q9 IAA */}
+          <div>
+            <FieldLabel label="9. IAA Hours" hint="Enter 0 if not applicable" />
+            <NumInput value={npHoursIAA} onChange={setNpHoursIAA} min={0} step={0.5} />
           </div>
 
           {/* Q10 Training */}
           <div>
-            <FieldLabel label="9. Training / Evaluation Hours" hint="Enter 0 if not applicable" />
-            <NumInput value={npHoursTraining} onChange={setNpHoursTraining} min={0} max={8} step={0.5} />
+            <FieldLabel label="10. Training / Evaluation Hours" hint="Enter 0 if not applicable" />
+            <NumInput value={npHoursTraining} onChange={setNpHoursTraining} min={0} step={0.5} />
           </div>
 
           {/* Q11 Review */}
           <div>
-            <FieldLabel label="10. Review Hours" hint="Enter 0 if not applicable" />
-            <NumInput value={npHoursReview} onChange={setNpHoursReview} min={0} max={8} step={0.5} />
+            <FieldLabel label="11. Review Hours" hint="Enter 0 if not applicable" />
+            <NumInput value={npHoursReview} onChange={setNpHoursReview} min={0} step={0.5} />
           </div>
 
-          {/* Q12 Other */}
+          {/* Q12 Waiting for Worksets */}
           <div>
-            <FieldLabel
-              label="11. Other Non-Production Hours"
-              hint="DMO Refresher / Waiting for worksets / Meetings / IT issues. Describe in Remarks."
+            <FieldLabel label="12. Waiting for Worksets" hint="Enter 0 if not applicable" />
+            <NumInput value={npHoursWaiting} onChange={setNpHoursWaiting} min={0} step={0.5} />
+          </div>
+
+          {/* Q13 Meetings */}
+          <div>
+            <FieldLabel label="13. Meetings" hint="Enter 0 if not applicable" />
+            <NumInput value={npHoursMeetings} onChange={setNpHoursMeetings} min={0} step={0.5} />
+          </div>
+
+          {/* Q14 IT/NEAT Issues */}
+          <div>
+            <FieldLabel label="14. IT / NEAT Issues" hint="Enter 0 if not applicable" />
+            <NumInput value={npHoursIT} onChange={setNpHoursIT} min={0} step={0.5} />
+          </div>
+
+          {/* Q15 Other-Working Hours Remarks */}
+          <div>
+            <FieldLabel label="15. Other-Working Hours Remarks" hint="Describe the breakdown of other-working hours" />
+            <textarea
+              value={otherWorkingRemarks}
+              onChange={e => setOtherWorkingRemarks(e.target.value)}
+              placeholder="e.g. 1h waiting for workset assignment, 0.5h team sync…"
+              rows={2}
+              className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 placeholder:text-slate-300 resize-none bg-white"
             />
-            <NumInput value={npHoursOther} onChange={setNpHoursOther} min={0} max={8} step={0.5} />
           </div>
         </div>
       )}
 
-      {/* Q4 Total Working Hours — auto-calculated display */}
+      {/* Total Working Hours — auto-calculated display */}
       <SectionCard>
-        <FieldLabel label="12. Total Working Hours" hint="Auto-calculated" />
+        <FieldLabel label="16. Total Working Hours" hint="Auto-calculated" />
         <TotalHoursDisplay total={totalWorkingHours} />
       </SectionCard>
 
-      {/* Q13 Remarks */}
+      {/* Remarks */}
       <SectionCard>
         <FieldLabel
-          label="13. Remarks"
-          hint="Required. If Other NP hours > 0, explain the breakdown clearly."
+          label="17. Remarks"
+          hint="Required. Describe your work session or any issues."
           required
         />
         <textarea
           value={remarks}
           onChange={e => setRemarks(e.target.value)}
-          placeholder="Describe your work session, any issues, or NP hour breakdown…"
+          placeholder="Describe your work session, any issues, or hour breakdown…"
           rows={3}
           className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 placeholder:text-slate-300 resize-none"
         />
       </SectionCard>
 
-      {/* Q14 Misc Cost */}
+      {/* Misc Cost */}
       <SectionCard>
         <FieldLabel
-          label="14. Miscellaneous Cost (USD)"
+          label="18. Miscellaneous Cost (USD)"
           hint="Optional. Enter any out-of-pocket cost for reimbursement."
         />
         <input
@@ -638,10 +683,10 @@ function HoursForm({ session, forUser }: HoursFormProps) {
         />
       </SectionCard>
 
-      {/* Q15 Invoice Upload */}
+      {/* Invoice Upload */}
       <SectionCard>
         <FieldLabel
-          label="15. Invoice / Receipt Upload"
+          label="19. Invoice / Receipt Upload"
           hint="Optional. Up to 5 files, 10 MB each."
         />
         <FileUpload files={invoiceFiles} onChange={setInvoiceFiles} />
@@ -685,16 +730,23 @@ function EditModal({ sub, onSaved, onClose }: {
   const [totalNonProductionHours, setTotalNonProductionHours] = useState(sub.totalNonProductionHours)
   const [npHours2pass,            setNpHours2pass]            = useState(sub.npHours2pass)
   const [npHoursPhi,              setNpHoursPhi]              = useState(sub.npHoursPhi)
+  const [npHoursIAA,              setNpHoursIAA]              = useState(sub.npHoursIAA ?? 0)
   const [npHoursTraining,         setNpHoursTraining]         = useState(sub.npHoursTraining)
   const [npHoursReview,           setNpHoursReview]           = useState(sub.npHoursReview)
-  const [npHoursOther,            setNpHoursOther]            = useState(sub.npHoursOther)
+  const [npHoursWaiting,          setNpHoursWaiting]          = useState(sub.npHoursWaiting ?? 0)
+  const [npHoursMeetings,         setNpHoursMeetings]         = useState(sub.npHoursMeetings ?? 0)
+  const [npHoursIT,               setNpHoursIT]               = useState(sub.npHoursIT ?? 0)
+  const [otherWorkingRemarks,     setOtherWorkingRemarks]     = useState(sub.otherWorkingRemarks ?? '')
   const [remarks,                 setRemarks]                 = useState(sub.remarks)
   const [miscCost,                setMiscCost]                = useState(sub.miscCost !== null ? String(sub.miscCost) : '')
   const [saving,                  setSaving]                  = useState(false)
   const [error,                   setError]                   = useState('')
 
-  const npSubtotal = round1(npHours2pass + npHoursPhi + npHoursTraining + npHoursReview + npHoursOther)
-  const npMatch    = Math.abs(npSubtotal - totalNonProductionHours) < 0.001
+  const npSubtotal = round1(
+    npHours2pass + npHoursPhi + npHoursIAA + npHoursTraining + npHoursReview +
+    npHoursWaiting + npHoursMeetings + npHoursIT
+  )
+  const npMatch           = Math.abs(npSubtotal - totalNonProductionHours) < 0.001
   const totalWorkingHours = round1(productionHours + (hasNonProduction ? totalNonProductionHours : 0))
 
   async function handleSave(e: FormEvent) {
@@ -712,11 +764,16 @@ function EditModal({ sub, onSaved, onClose }: {
         productionHours,
         hasNonProduction,
         totalNonProductionHours: hasNonProduction ? totalNonProductionHours : 0,
-        npHours2pass:    hasNonProduction ? npHours2pass    : 0,
-        npHoursPhi:      hasNonProduction ? npHoursPhi      : 0,
-        npHoursTraining: hasNonProduction ? npHoursTraining : 0,
-        npHoursReview:   hasNonProduction ? npHoursReview   : 0,
-        npHoursOther:    hasNonProduction ? npHoursOther    : 0,
+        npHours2pass:     hasNonProduction ? npHours2pass    : 0,
+        npHoursPhi:       hasNonProduction ? npHoursPhi      : 0,
+        npHoursIAA:       hasNonProduction ? npHoursIAA      : 0,
+        npHoursTraining:  hasNonProduction ? npHoursTraining : 0,
+        npHoursReview:    hasNonProduction ? npHoursReview   : 0,
+        npHoursWaiting:   hasNonProduction ? npHoursWaiting  : 0,
+        npHoursMeetings:  hasNonProduction ? npHoursMeetings : 0,
+        npHoursIT:        hasNonProduction ? npHoursIT       : 0,
+        npHoursOther:     0,
+        otherWorkingRemarks: hasNonProduction ? otherWorkingRemarks.trim() : '',
         totalWorkingHours,
         remarks,
         miscCost: parsedMiscCost,
@@ -762,12 +819,12 @@ function EditModal({ sub, onSaved, onClose }: {
           </div>
 
           <div>
-            <FieldLabel label="Production Hours" />
-            <NumInput value={productionHours} onChange={setProductionHours} min={0} max={8} step={0.5} />
+            <FieldLabel label="Production Hours" hint="Transcription / Scribing" />
+            <NumInput value={productionHours} onChange={setProductionHours} min={0} step={0.5} />
           </div>
 
           <div>
-            <FieldLabel label="Non-production hours?" />
+            <FieldLabel label="Any other-working hours?" />
             <div className="flex gap-2 mt-1">
               {([true, false] as const).map(val => (
                 <button key={String(val)} type="button" onClick={() => setHasNonProduction(val)}
@@ -783,26 +840,38 @@ function EditModal({ sub, onSaved, onClose }: {
 
           {hasNonProduction && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Other-Working Hours</p>
               <div>
-                <FieldLabel label="Total NP Hours" />
-                <NumInput value={totalNonProductionHours} onChange={setTotalNonProductionHours} min={0} max={8} step={0.5} />
+                <FieldLabel label="Total Other-Working Hours" />
+                <NumInput value={totalNonProductionHours} onChange={setTotalNonProductionHours} min={0} step={0.5} />
                 <div className={cn('mt-1 text-xs px-2 py-0.5 rounded-full inline-block',
                   npMatch ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>
                   Sub-total: {npSubtotal} / {totalNonProductionHours} h
                 </div>
               </div>
               {[
-                ['2Pass', npHours2pass, setNpHours2pass] as const,
-                ['PHI', npHoursPhi, setNpHoursPhi] as const,
-                ['Training', npHoursTraining, setNpHoursTraining] as const,
-                ['Review', npHoursReview, setNpHoursReview] as const,
-                ['Other', npHoursOther, setNpHoursOther] as const,
+                ['2Pass',              npHours2pass,    setNpHours2pass   ] as const,
+                ['PHI',               npHoursPhi,      setNpHoursPhi     ] as const,
+                ['IAA',               npHoursIAA,      setNpHoursIAA     ] as const,
+                ['Training',          npHoursTraining, setNpHoursTraining] as const,
+                ['Review',            npHoursReview,   setNpHoursReview  ] as const,
+                ['Waiting for Worksets', npHoursWaiting, setNpHoursWaiting] as const,
+                ['Meetings',          npHoursMeetings, setNpHoursMeetings] as const,
+                ['IT / NEAT Issues',  npHoursIT,       setNpHoursIT      ] as const,
               ].map(([label, val, setter]) => (
                 <div key={label}>
                   <FieldLabel label={label} />
-                  <NumInput value={val} onChange={setter} min={0} max={8} step={0.5} />
+                  <NumInput value={val} onChange={setter} min={0} step={0.5} />
                 </div>
               ))}
+              <div>
+                <FieldLabel label="Other-Working Hours Remarks" />
+                <textarea
+                  value={otherWorkingRemarks}
+                  onChange={e => setOtherWorkingRemarks(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none bg-white" />
+              </div>
             </div>
           )}
 
@@ -906,7 +975,7 @@ function SubmissionsPanel() {
       {!loading && (
         <p className="text-xs text-slate-500">
           {subs.length} submission{subs.length !== 1 ? 's' : ''} ·
-          Production: {totals.prod}h · NP: {totals.np}h · Total: {totals.total}h
+          Production: {totals.prod}h · Other-Working: {totals.np}h · Total: {totals.total}h
         </p>
       )}
 
@@ -920,7 +989,7 @@ function SubmissionsPanel() {
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Locale</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Prod h</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">NP h</th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">OW h</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total h</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Remarks</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-20"></th>
@@ -1171,7 +1240,7 @@ export default function SubmitPage() {
           <p className="text-sm text-slate-500 mt-0.5">
             {isAdmin
               ? 'Submit and manage freelancer daily hour logs'
-              : 'Record your daily work session — complete all 15 questions'
+              : 'Record your daily work session — complete all questions'
             }
           </p>
         </div>
