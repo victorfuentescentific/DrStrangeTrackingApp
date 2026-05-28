@@ -50,7 +50,7 @@ function assignLanes(bars: WeekBar[]): WeekBar[] {
 
 // ─── Per-week bar builder ────────────────────────────────────────────────────
 function getBarsForWeek(weekStart: Date, weekEnd: Date, worksets: Workset[]): WeekBar[] {
-  const raw: Omit<WeekBar, 'lane'>[] = []
+  const raw: WeekBar[] = []
 
   for (const ws of worksets) {
     if (ws.status === 'completed' || !ws.startDate || !ws.eta) continue
@@ -78,7 +78,7 @@ function getBarsForWeek(weekStart: Date, weekEnd: Date, worksets: Workset[]): We
     })
   }
 
-  return assignLanes(raw as WeekBar[])
+  return assignLanes(raw)
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
