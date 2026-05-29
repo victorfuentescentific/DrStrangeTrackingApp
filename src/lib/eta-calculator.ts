@@ -20,7 +20,7 @@ export const CORPUS: Record<WorkflowType, { p1: number; iaa: number; p2: number;
 
 // ─── Known Tier 1 Team Sizes (confirmed v4.1) ─────────────────────────────
 export const TIER1_TEAM_SIZES: Record<string, { trans: number; scrib: number }> = {
-  en_GB: { trans: 6,  scrib: 6  },
+  en_GB: { trans: 6,  scrib: 9  },
   de_DE: { trans: 11, scrib: 11 },
   nl_NL: { trans: 11, scrib: 10 },
   fr_FR: { trans: 11, scrib: 11 },
