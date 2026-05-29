@@ -106,25 +106,34 @@ export const useStore = create<AppStore>()(
       },
 
       reloadWorksets: async () => {
-        // Reload worksets from API after a bulk operation (e.g. Recalculate Timelines).
-        // IMPORTANT: never overwrites the store with an empty array — if the API
-        // returns nothing or fails, silently keep the existing in-memory worksets.
-        // MOCK_WORKSETS fallback is intentionally omitted here; it belongs only in
-        // initialize() for the very first cold-start load.
-        let worksets: Workset[] = []
+        // Reload worksets from API (after bulk ops, page mount, or initialization).
+        //
+        // MERGE STRATEGY — not a blind replace:
+        //   DB response is authoritative for all persisted worksets.
+        //   Optimistically-added worksets (in the store but not yet in the DB)
+        //   are preserved so that concurrent addWorkset() calls are never wiped.
+        //   This prevents the race: initialize() → reloadWorksets() fires while
+        //   addWorkset() has just done its optimistic update but the POST is still
+        //   in-flight or not yet visible on a subsequent GET.
+        let dbWorksets: Workset[] = []
         try {
           const res = await fetch('/api/worksets')
           if (!res.ok) return          // auth/server error — keep existing data
           const data = await res.json()
-          worksets = Array.isArray(data) ? data : []
+          dbWorksets = Array.isArray(data) ? data : []
         } catch {
           return                        // network error — keep existing data
         }
 
-        if (worksets.length === 0) return  // empty response — keep existing data
+        if (dbWorksets.length === 0) return  // empty response — keep existing data
+
+        // Preserve optimistic-only entries (those added locally but not yet persisted)
+        const dbIds = new Set(dbWorksets.map(w => w.id))
+        const optimisticPending = get().worksets.filter(w => !dbIds.has(w.id))
+        const merged = [...optimisticPending, ...dbWorksets]
 
         // Auto-update overdue status (local only — DB update fires separately)
-        const updated = worksets.map(ws => {
+        const updated = merged.map(ws => {
           if (ws.status === 'completed') return ws
           const effectiveEta = ws.revisedEta ?? ws.eta
           const days = daysUntil(effectiveEta)
