@@ -20,8 +20,9 @@ export interface DailySubmission {
   npHoursMeetings: number    // Meetings (new)
   npHoursIT: number          // IT/NEAT issues (new)
   npHoursOther: number       // Legacy — kept for backward compat; new submissions send 0
-  otherWorkingRemarks: string // Remarks specific to other-working hours (new)
-  totalWorkingHours: number  // productionHours + totalNonProductionHours
+  otherWorkingRemarks: string  // Remarks specific to other-working hours
+  productionComments: string   // Where production hours were invested (required)
+  totalWorkingHours: number    // productionHours + totalNonProductionHours
   remarks: string
   miscCost: number | null
   invoiceUrls: string[]
@@ -37,7 +38,8 @@ export interface DailySubmission {
     ADD COLUMN IF NOT EXISTS np_hours_waiting    NUMERIC(5,1) NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS np_hours_meetings   NUMERIC(5,1) NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS np_hours_it         NUMERIC(5,1) NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS other_working_remarks TEXT NOT NULL DEFAULT '';
+    ADD COLUMN IF NOT EXISTS other_working_remarks TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS production_comments   TEXT NOT NULL DEFAULT '';
 */
 
 // Map snake_case DB row → camelCase DailySubmission
@@ -61,7 +63,8 @@ export function toSubmission(row: Record<string, unknown>): DailySubmission {
     npHoursMeetings:         (row.np_hours_meetings as number) ?? 0,
     npHoursIT:               (row.np_hours_it      as number) ?? 0,
     npHoursOther:            (row.np_hours_other   as number) ?? 0,
-    otherWorkingRemarks:     (row.other_working_remarks as string) ?? '',
+    otherWorkingRemarks:     (row.other_working_remarks  as string) ?? '',
+    productionComments:      (row.production_comments    as string) ?? '',
     totalWorkingHours:       row.total_working_hours as number,
     remarks:                 (row.remarks as string) ?? '',
     miscCost:                (row.misc_cost as number | null) ?? null,
@@ -124,6 +127,7 @@ export async function addDailySubmission(
     np_hours_it:               sub.npHoursIT,
     np_hours_other:            sub.npHoursOther,
     other_working_remarks:     sub.otherWorkingRemarks,
+    production_comments:       sub.productionComments,
     total_working_hours:       sub.totalWorkingHours,
     remarks:                   sub.remarks,
     misc_cost:                 sub.miscCost,
@@ -166,6 +170,7 @@ export async function updateDailySubmission(
   if (updates.npHoursIT               !== undefined) row.np_hours_it                = updates.npHoursIT
   if (updates.npHoursOther            !== undefined) row.np_hours_other             = updates.npHoursOther
   if (updates.otherWorkingRemarks     !== undefined) row.other_working_remarks      = updates.otherWorkingRemarks
+  if (updates.productionComments      !== undefined) row.production_comments        = updates.productionComments
   if (updates.totalWorkingHours       !== undefined) row.total_working_hours        = updates.totalWorkingHours
   if (updates.remarks                 !== undefined) row.remarks                    = updates.remarks
   if (updates.miscCost                !== undefined) row.misc_cost                  = updates.miscCost

@@ -85,6 +85,7 @@ export async function POST(req: NextRequest) {
   const npHoursIT       = body.npHoursIT       as number | undefined
   const npHoursOther    = body.npHoursOther    as number | undefined
   const otherWorkingRemarks = typeof body.otherWorkingRemarks === 'string' ? body.otherWorkingRemarks : ''
+  const productionComments  = typeof body.productionComments  === 'string' ? body.productionComments  : ''
   const totalWorkingHours = body.totalWorkingHours as number | undefined
   const remarks = body.remarks as string | undefined
 
@@ -112,6 +113,8 @@ export async function POST(req: NextRequest) {
     errors.push('totalWorkingHours must be a non-negative number')
   if (!remarks || typeof remarks !== 'string' || remarks.trim() === '')
     errors.push('remarks is required')
+  if (!productionComments || productionComments.trim() === '')
+    errors.push('productionComments is required')
 
   const miscCost: number | null =
     typeof body.miscCost === 'number' ? body.miscCost : null
@@ -144,6 +147,7 @@ export async function POST(req: NextRequest) {
     npHoursIT:             typeof npHoursIT       === 'number' ? npHoursIT       : 0,
     npHoursOther:          npHoursOther!,
     otherWorkingRemarks,
+    productionComments:    productionComments.trim(),
     totalWorkingHours:     totalWorkingHours!,
     remarks:               remarks!.trim(),
     miscCost,
@@ -185,6 +189,7 @@ export async function PATCH(req: NextRequest) {
   if (body.npHoursIT               !== undefined) updates.npHoursIT               = body.npHoursIT as number
   if (body.npHoursOther            !== undefined) updates.npHoursOther            = body.npHoursOther as number
   if (body.otherWorkingRemarks     !== undefined) updates.otherWorkingRemarks     = body.otherWorkingRemarks as string
+  if (body.productionComments      !== undefined) updates.productionComments      = body.productionComments as string
   if (body.totalWorkingHours       !== undefined) updates.totalWorkingHours       = body.totalWorkingHours as number
   if (body.remarks                 !== undefined) updates.remarks                 = body.remarks as string
   if (body.miscCost                !== undefined) updates.miscCost                = body.miscCost as number | null

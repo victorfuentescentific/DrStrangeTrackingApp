@@ -58,6 +58,7 @@ interface DailySubmissionRow {
   npHoursIT: number
   npHoursOther: number
   otherWorkingRemarks: string
+  productionComments: string
   totalWorkingHours: number
   remarks: string
   miscCost: number | null
@@ -325,6 +326,7 @@ function HoursForm({ session, forUser }: HoursFormProps) {
   const [npHoursMeetings,         setNpHoursMeetings]         = useState(0)
   const [npHoursIT,               setNpHoursIT]               = useState(0)
   const [otherWorkingRemarks,     setOtherWorkingRemarks]     = useState('')
+  const [productionComments,      setProductionComments]      = useState('')
   const [remarks,                 setRemarks]                 = useState('')
   const [miscCost,                setMiscCost]                = useState<string>('')
   const [invoiceFiles,            setInvoiceFiles]            = useState<File[]>([])
@@ -361,6 +363,7 @@ function HoursForm({ session, forUser }: HoursFormProps) {
     setNpHoursMeetings(0)
     setNpHoursIT(0)
     setOtherWorkingRemarks('')
+    setProductionComments('')
     setRemarks('')
     setMiscCost('')
     setInvoiceFiles([])
@@ -378,9 +381,12 @@ function HoursForm({ session, forUser }: HoursFormProps) {
     if (!date) errs.push('Date is required.')
     if (hasNonProduction === null) errs.push('Please answer whether you have other-working hours.')
 
+    if (!productionComments.trim()) errs.push('Production hours comments are required.')
+
     if (hasNonProduction) {
       if (totalNonProductionHours <= 0) errs.push('Total other-working hours must be > 0.')
       if (!npMatch) errs.push(`Sub-category breakdown (${npSubtotal}h) must equal declared total (${totalNonProductionHours}h).`)
+      if (!otherWorkingRemarks.trim()) errs.push('Other-working hours remarks are required.')
     }
 
     if (!remarks.trim()) errs.push('Remarks are required.')
@@ -432,6 +438,7 @@ function HoursForm({ session, forUser }: HoursFormProps) {
         npHoursIT:        hasNonProduction ? npHoursIT       : 0,
         npHoursOther:     0,
         otherWorkingRemarks: hasNonProduction ? otherWorkingRemarks.trim() : '',
+        productionComments: productionComments.trim(),
         totalWorkingHours: round1(productionHours + effectiveNP),
         remarks: remarks.trim(),
         miscCost: parsedMiscCost,
@@ -525,6 +532,20 @@ function HoursForm({ session, forUser }: HoursFormProps) {
           required
         />
         <NumInput value={productionHours} onChange={setProductionHours} min={0} step={0.5} />
+        <div className="mt-3">
+          <FieldLabel
+            label="Production Hours Comments"
+            hint="Describe where your production hours were invested today"
+            required
+          />
+          <textarea
+            value={productionComments}
+            onChange={e => setProductionComments(e.target.value)}
+            placeholder="e.g. 4h on workset NL-DMO-batch-a, 3.5h on workset NL-DMO-batch-b…"
+            rows={2}
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 placeholder:text-slate-300 resize-none"
+          />
+        </div>
       </SectionCard>
 
       {/* Q5 Other-Working toggle */}
@@ -632,7 +653,7 @@ function HoursForm({ session, forUser }: HoursFormProps) {
 
           {/* Q15 Other-Working Hours Remarks */}
           <div>
-            <FieldLabel label="15. Other-Working Hours Remarks" hint="Describe the breakdown of other-working hours" />
+            <FieldLabel label="15. Other-Working Hours Remarks" hint="Describe the breakdown of other-working hours" required />
             <textarea
               value={otherWorkingRemarks}
               onChange={e => setOtherWorkingRemarks(e.target.value)}
@@ -737,6 +758,7 @@ function EditModal({ sub, onSaved, onClose }: {
   const [npHoursMeetings,         setNpHoursMeetings]         = useState(sub.npHoursMeetings ?? 0)
   const [npHoursIT,               setNpHoursIT]               = useState(sub.npHoursIT ?? 0)
   const [otherWorkingRemarks,     setOtherWorkingRemarks]     = useState(sub.otherWorkingRemarks ?? '')
+  const [productionComments,      setProductionComments]      = useState(sub.productionComments ?? '')
   const [remarks,                 setRemarks]                 = useState(sub.remarks)
   const [miscCost,                setMiscCost]                = useState(sub.miscCost !== null ? String(sub.miscCost) : '')
   const [saving,                  setSaving]                  = useState(false)
@@ -774,6 +796,7 @@ function EditModal({ sub, onSaved, onClose }: {
         npHoursIT:        hasNonProduction ? npHoursIT       : 0,
         npHoursOther:     0,
         otherWorkingRemarks: hasNonProduction ? otherWorkingRemarks.trim() : '',
+        productionComments: productionComments.trim(),
         totalWorkingHours,
         remarks,
         miscCost: parsedMiscCost,
@@ -821,6 +844,16 @@ function EditModal({ sub, onSaved, onClose }: {
           <div>
             <FieldLabel label="Production Hours" hint="Transcription / Scribing" />
             <NumInput value={productionHours} onChange={setProductionHours} min={0} step={0.5} />
+            <div className="mt-2">
+              <FieldLabel label="Production Hours Comments" hint="Where were production hours invested?" required />
+              <textarea
+                value={productionComments}
+                onChange={e => setProductionComments(e.target.value)}
+                rows={2}
+                placeholder="e.g. 4h on workset NL-DMO-batch-a…"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none text-slate-800 placeholder:text-slate-300"
+              />
+            </div>
           </div>
 
           <div>
