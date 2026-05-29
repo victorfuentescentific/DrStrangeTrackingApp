@@ -12,12 +12,25 @@ interface AppLayoutProps {
   subtitle?: string
 }
 
+// Module-level timestamp — persists across AppLayout mounts (page navigations)
+// so we only hit the API once per STALE_MS window, not on every navigation.
+let _lastReloadMs = 0
+const STALE_MS = 30_000 // 30 seconds
+
 export function AppLayout({ children, title, subtitle }: AppLayoutProps) {
-  const { initialize, isNotificationPanelOpen } = useStore()
+  const { initialize, reloadWorksets, isNotificationPanelOpen } = useStore()
 
   useEffect(() => {
-    initialize()
-  }, [initialize])
+    // One-time setup: session user + initial workset load (no-op after first run)
+    void initialize()
+    // Stale-while-revalidate: refresh worksets on every navigation,
+    // but throttled to at most once per 30 s to avoid hammering the API.
+    if (Date.now() - _lastReloadMs > STALE_MS) {
+      _lastReloadMs = Date.now()
+      void reloadWorksets()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="flex h-screen overflow-hidden">
