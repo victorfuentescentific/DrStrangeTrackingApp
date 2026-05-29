@@ -164,19 +164,26 @@ export const useStore = create<AppStore>()(
         // Optimistic update — show immediately in the list
         set(state => ({ worksets: [newWorkset, ...state.worksets] }))
         // Await DB write; roll back on failure so the store stays consistent
+        let res: Response
         try {
-          const res = await fetch('/api/worksets', {
+          res = await fetch('/api/worksets', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newWorkset),
           })
-          if (!res.ok) {
-            set(state => ({ worksets: state.worksets.filter(w => w.id !== newWorkset.id) }))
-            throw new Error('Failed to save workset to database')
-          }
-        } catch (err) {
+        } catch (networkErr) {
           set(state => ({ worksets: state.worksets.filter(w => w.id !== newWorkset.id) }))
-          throw err
+          throw new Error('Network error — could not reach the server. Check your connection and try again.')
+        }
+        if (!res.ok) {
+          set(state => ({ worksets: state.worksets.filter(w => w.id !== newWorkset.id) }))
+          let msg = `Server error ${res.status}`
+          try {
+            const body = await res.json() as { error?: string; message?: string }
+            msg = body.error ?? body.message ?? msg
+          } catch { /* response wasn't JSON */ }
+          if (res.status === 401) msg = 'Session expired — please log out and log back in.'
+          throw new Error(msg)
         }
         return newWorkset
       },

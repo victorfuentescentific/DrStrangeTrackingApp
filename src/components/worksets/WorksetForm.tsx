@@ -168,7 +168,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
   const localeGroups = LOCALES_BY_REGION[form.region] ?? {}
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form) }} className="space-y-5">
+    <form onSubmit={e => { e.preventDefault(); void onSubmit(form) }} className="space-y-5">
 
       {/* Name */}
       <div>
@@ -331,7 +331,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
         <div className="flex gap-3 items-start">
           <div className="flex-1">
             <input
-              type="number" min="5" max="50"
+              type="number" min="1" max="50"
               value={form.teamSize}
               onChange={e => set('teamSize', e.target.value)}
               className={inputClass}
@@ -370,6 +370,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
           <label className={labelClass}>ETA</label>
           <div className="flex gap-2">
             <input
+              required
               type="date"
               value={form.eta}
               onChange={e => set('eta', e.target.value)}

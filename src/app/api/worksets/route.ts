@@ -70,6 +70,8 @@ export async function POST(req: NextRequest) {
 
   if (!body.id || !body.name || !body.workflow || !body.locale)
     return NextResponse.json({ error: 'id, name, workflow, locale are required' }, { status: 422 })
+  if (!body.eta)
+    return NextResponse.json({ error: 'eta is required' }, { status: 422 })
 
   const row = {
     id:                   body.id,
@@ -83,8 +85,8 @@ export async function POST(req: NextRequest) {
     status:               body.status ?? 'not-started',
     priority:             body.priority ?? 'medium',
     risk_level:           body.riskLevel ?? 'low',
-    start_date:           body.startDate,
-    eta:                  body.eta,
+    start_date:           body.startDate || null,
+    eta:                  body.eta || null,
     revised_eta:          body.revisedEta ?? null,
     phases:               body.phases ?? null,
     is_blocked:           body.isBlocked ?? false,
