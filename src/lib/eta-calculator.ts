@@ -1,4 +1,4 @@
-import { WorkflowType, PhaseTimeline } from './types'
+import { WorkflowType, PhaseTimeline, EditablePhaseKey, EDITABLE_PHASE_KEYS } from './types'
 
 // ─── v4.2 Model Constants ────────────────────────────────────────────────────
 // v4.2 change: IAA merged into 1P phase (d1 now covers 1P+IAA combined workload)
@@ -219,6 +219,14 @@ export function calculateSuccessorETA(
   locale: string,
   n: number,
 ): PhaseTimeline {
+  // Custom-timeline predecessor: if it has no 2P phase, no head-start is possible.
+  // Successor starts the working day after the predecessor's etaDate.
+  const has2P = set1Phases.activePhases == null || set1Phases.activePhases.includes('p2')
+  if (!has2P) {
+    const nextStart = addWorkingDays(set1Phases.etaDate, 1)
+    return calculateETA(workflow, locale, n, nextStart)
+  }
+
   // Apply en_GB exception
   const effectiveLocale = locale === 'en_GB' ? 'nl_NL' : locale
   const effectiveN = locale === 'en_GB'
@@ -372,4 +380,84 @@ export const WORKFLOW_BG: Record<WorkflowType, string> = {
   DAX:     'bg-indigo-100 text-indigo-700',
   DMO:     'bg-amber-100 text-amber-700',
   Scribing:'bg-green-100 text-green-700',
+}
+
+// ─── Custom timeline builder ──────────────────────────────────────────────────
+// Builds a PhaseTimeline from an ordered list of {key, days} pairs.
+// All dates cascade from startDate using working-day arithmetic.
+// Date fields for absent phases are set to the nearest neighbour end date
+// so they render as zero-span (invisible) in all chart views.
+
+export interface CustomPhaseInput {
+  key:  EditablePhaseKey
+  days: number
+}
+
+export function buildCustomTimeline(
+  phases: CustomPhaseInput[],
+  startDate: string,
+  model: 'Sequential' | 'Parallel',
+  isTier2: boolean,
+): PhaseTimeline {
+  if (phases.length === 0) throw new Error('buildCustomTimeline: at least one phase required')
+
+  // Build per-phase start/end dates
+  const dates: Partial<Record<EditablePhaseKey, { start: string; end: string }>> = {}
+  let offset = 0
+  for (const ph of phases) {
+    const phStart = addWorkingDays(startDate, offset)
+    const phEnd   = addWorkingDays(startDate, offset + ph.days - 1)
+    dates[ph.key] = { start: phStart, end: phEnd }
+    offset += ph.days
+  }
+
+  // Last active phase end = etaDate
+  const lastEnd = phases[phases.length - 1]
+  const etaDate = dates[lastEnd.key]!.end
+
+  // Fill absent phases with a zero-span sentinel (etaDate) so existing
+  // consumers that read e.g. p.p2Start don't crash on undefined.
+  const sentinel = etaDate
+  const activePhases = phases.map(p => p.key)
+
+  const totalDays = offset
+
+  return {
+    p1Start:  dates.p1?.start   ?? sentinel,
+    p1End:    dates.p1?.end     ?? sentinel,
+    rev1End:  dates.rev1?.end   ?? dates.p1?.end   ?? sentinel,
+    p2Start:  dates.p2?.start   ?? sentinel,
+    p2End:    dates.p2?.end     ?? sentinel,
+    rev2End:  dates.rev2?.end   ?? dates.p2?.end   ?? sentinel,
+    phiStart: dates.phi?.start  ?? sentinel,
+    etaDate,
+    totalDays,
+    d1:  dates.p1   ? phases.find(p => p.key === 'p1')!.days   : 0,
+    d2:  dates.p2   ? phases.find(p => p.key === 'p2')!.days   : 0,
+    dpf: dates.phi  ? phases.find(p => p.key === 'phi')!.days  : 0,
+    model,
+    isTier2,
+    activePhases,
+    isCustom: true,
+  }
+}
+
+// Returns true if the date string falls on a working day (Mon–Fri)
+export function isWorkingDay(dateStr: string): boolean {
+  const dow = new Date(dateStr + 'T12:00:00').getDay()
+  return dow !== 0 && dow !== 6
+}
+
+// Extract per-phase durations from an existing PhaseTimeline (for initialising the editor)
+export function extractPhaseDurations(phases: PhaseTimeline): CustomPhaseInput[] {
+  const active = phases.activePhases ?? (EDITABLE_PHASE_KEYS as EditablePhaseKey[])
+  return active.map(key => {
+    switch (key) {
+      case 'p1':   return { key, days: phases.d1  || 1 }
+      case 'rev1': return { key, days: 1 }
+      case 'p2':   return { key, days: phases.d2  || 1 }
+      case 'rev2': return { key, days: 1 }
+      case 'phi':  return { key, days: phases.dpf || 1 }
+    }
+  })
 }

@@ -7,6 +7,7 @@ import { WorksetForm } from '@/components/worksets/WorksetForm'
 import { useStore } from '@/lib/store'
 import { ROLE_PERMISSIONS } from '@/lib/types'
 import { calculateETA } from '@/lib/eta-calculator'
+import { PhaseTimeline } from '@/lib/types'
 import { AlertCircle, Loader2 } from 'lucide-react'
 
 export default function NewWorksetPage() {
@@ -51,14 +52,17 @@ export default function NewWorksetPage() {
 
           <WorksetForm
             onCancel={() => router.push('/worksets')}
-            onSubmit={async (form) => {
+            onSubmit={async (form, formPhases?: PhaseTimeline) => {
               setSubmitting(true)
               setSubmitError(null)
               const n = parseInt(form.teamSize) || 11
-              // For sequential worksets, linkSuccessor calculates phases; skip standalone calc
-              const phases = !form.predecessorId && form.locale && form.startDate && n >= 1
-                ? calculateETA(form.workflow, form.locale, n, form.startDate)
-                : undefined
+              // Use the phase timeline from the editor if provided (may be custom),
+              // otherwise fall back to auto-calculation for standalone worksets.
+              // Sequential worksets get phases set via linkSuccessor.
+              const phases: PhaseTimeline | undefined = formPhases
+                ?? (!form.predecessorId && form.locale && form.startDate && n >= 1
+                  ? calculateETA(form.workflow, form.locale, n, form.startDate)
+                  : undefined)
               try {
                 const newWorkset = await addWorkset({
                   name: form.name,

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { useStore } from '@/lib/store'
 import { ROLE_PERMISSIONS } from '@/lib/types'
 import { calculateETA } from '@/lib/eta-calculator'
+import { PhaseTimeline } from '@/lib/types'
 import { ArrowLeft } from 'lucide-react'
 
 export default function WorksetEditPage() {
@@ -55,11 +56,13 @@ export default function WorksetEditPage() {
             initial={ws}
             isEdit
             onCancel={() => router.push(`/worksets/${ws.id}`)}
-            onSubmit={(form) => {
+            onSubmit={(form, formPhases?: PhaseTimeline) => {
               const n = parseInt(form.teamSize) || 11
-              const newPhases = form.locale && form.startDate && n >= 5
-                ? calculateETA(form.workflow, form.locale, n, form.startDate)
-                : undefined
+              // Prefer the custom timeline from the editor; fall back to auto-calc
+              const newPhases: PhaseTimeline | undefined = formPhases
+                ?? (form.locale && form.startDate && n >= 1
+                  ? calculateETA(form.workflow, form.locale, n, form.startDate)
+                  : undefined)
               updateWorkset(ws.id, {
                 name:              form.name,
                 workflow:          form.workflow,
@@ -70,7 +73,7 @@ export default function WorksetEditPage() {
                 startDate:         form.startDate,
                 eta:               form.eta,
                 revisedEta:        form.revisedEta || undefined,
-                phases:            newPhases,
+                phases:            newPhases ?? ws.phases,
                 status:            form.status,
                 priority:          form.priority,
                 riskLevel:         form.riskLevel,

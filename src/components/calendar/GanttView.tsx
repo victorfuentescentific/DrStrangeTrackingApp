@@ -3,11 +3,13 @@
 import { useMemo, useState } from 'react'
 import { Workset, PhaseTimeline } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
-import { PHASE_HEX, adjustPhaseDate, calculateETA, EditablePhaseField } from '@/lib/eta-calculator'
+import { calculateETA } from '@/lib/eta-calculator'
 import { getLocaleColor, PHASE_PATTERN_STYLE, PHASE_LEGEND, type PhaseKey } from '@/lib/locale-colors'
+import { EditablePhaseKey } from '@/lib/types'
 import { useStore } from '@/lib/store'
 import { differenceInCalendarDays, parseISO, addDays, format } from 'date-fns'
-import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react'
+import { ChevronDown, ChevronRight, Pencil } from 'lucide-react'
+import { PhaseTimelineEditor } from '@/components/worksets/PhaseTimelineEditor'
 
 interface GanttViewProps {
   worksets: Workset[]
@@ -20,53 +22,39 @@ const DAY_LABELS = ['S', 'M', 'T', 'W', 'TH', 'F', 'S'] as const
 
 type GanttSeg = { left: number; width: number; phaseKey: PhaseKey; label: string }
 
+// Map EditablePhaseKey → visual PhaseKey (two REV gates share the same colour/pattern)
+const VISUAL_KEY: Record<EditablePhaseKey, PhaseKey> = {
+  p1:   'p1',
+  rev1: 'rev',
+  p2:   'p2',
+  rev2: 'rev',
+  phi:  'phi',
+}
+
+const ALL_SEGS: Array<{ key: EditablePhaseKey; start: (p: NonNullable<Workset['phases']>, ws: Workset) => string; end: (p: NonNullable<Workset['phases']>) => string; label: string }> = [
+  { key: 'p1',   start: (_, ws) => ws.startDate, end: p => p.p1End,   label: '1P+IAA' },
+  { key: 'rev1', start: p => p.p1End,             end: p => p.rev1End, label: 'REV₁'  },
+  { key: 'p2',   start: p => p.p2Start,           end: p => p.p2End,   label: '2P'    },
+  { key: 'rev2', start: p => p.p2End,             end: p => p.rev2End, label: 'REV₂'  },
+  { key: 'phi',  start: p => p.phiStart,          end: p => p.etaDate, label: 'PHI'   },
+]
+
 function getPhaseSegments(ws: Workset): GanttSeg[] {
   if (!ws.phases) return []
   const p       = ws.phases
+  const active  = new Set<EditablePhaseKey>(p.activePhases ?? ['p1', 'rev1', 'p2', 'rev2', 'phi'])
   const wsStart = parseISO(ws.startDate)
   const total   = differenceInCalendarDays(parseISO(p.etaDate), wsStart) + 1 || 1
-  // Segments expressed as % WITHIN the workset's own span.
-  const segs: Array<{ start: string; end: string; phaseKey: PhaseKey; label: string }> = [
-    { start: ws.startDate, end: p.p1End,   phaseKey: 'p1',  label: '1P+IAA' },
-    { start: p.p1End,      end: p.rev1End, phaseKey: 'rev', label: 'REV'    },
-    { start: p.p2Start,    end: p.p2End,   phaseKey: 'p2',  label: '2P'     },
-    { start: p.phiStart,   end: p.etaDate, phaseKey: 'phi', label: 'PHI'    },
-  ]
-  return segs.map(s => {
-    const segOffset = differenceInCalendarDays(parseISO(s.start), wsStart)
-    const segLen    = differenceInCalendarDays(parseISO(s.end),   parseISO(s.start)) + 1
-    return { left: (segOffset / total) * 100, width: (segLen / total) * 100, phaseKey: s.phaseKey, label: s.label }
-  })
-}
 
-function PhaseEditorColumn({
-  field, label, color, helperText, phases, onEdit,
-}: {
-  field: EditablePhaseField
-  label: string
-  color: string
-  helperText: string
-  phases: PhaseTimeline
-  onEdit: (field: EditablePhaseField, date: string) => void
-}) {
-  const value = phases[field]
-  return (
-    <div>
-      <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1" style={{ color }}>
-        <span className="w-2 h-2 rounded-sm inline-block flex-shrink-0" style={{ backgroundColor: color }} />
-        {label}
-      </label>
-      <input
-        type="date"
-        defaultValue={value}
-        key={value}
-        onBlur={e => onEdit(field, e.target.value)}
-        className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-400 bg-white"
-      />
-      <p className="text-[9px] text-slate-400 mt-0.5">{formatDate(value)}</p>
-      <p className="text-[9px] text-slate-400">{helperText}</p>
-    </div>
-  )
+  return ALL_SEGS
+    .filter(s => active.has(s.key))
+    .map(s => {
+      const sDate = s.start(p, ws)
+      const eDate = s.end(p)
+      const segOffset = differenceInCalendarDays(parseISO(sDate), wsStart)
+      const segLen    = differenceInCalendarDays(parseISO(eDate), parseISO(sDate)) + 1
+      return { left: (segOffset / total) * 100, width: (segLen / total) * 100, phaseKey: VISUAL_KEY[s.key], label: s.label }
+    })
 }
 
 export function GanttView({ worksets }: GanttViewProps) {
@@ -132,16 +120,8 @@ export function GanttView({ worksets }: GanttViewProps) {
   const today       = new Date()
   const todayOffset = (differenceInCalendarDays(today, spanStart) / spanDays) * 100
 
-  function handlePhaseEdit(ws: Workset, field: EditablePhaseField, newDate: string) {
-    if (!ws.phases || !newDate) return
-    const adjusted = adjustPhaseDate(ws.phases, field, newDate)
-    updateWorkset(ws.id, { phases: adjusted, eta: adjusted.etaDate })
-  }
-
-  function handleReset(ws: Workset) {
-    if (!ws.phases) return
-    const fresh = calculateETA(ws.workflow, ws.locale, ws.teamSize, ws.startDate)
-    updateWorkset(ws.id, { phases: fresh, eta: fresh.etaDate })
+  function getDefaultTimeline(ws: Workset) {
+    return calculateETA(ws.workflow, ws.locale, ws.teamSize, ws.startDate)
   }
 
   return (
@@ -219,7 +199,14 @@ export function GanttView({ worksets }: GanttViewProps) {
                     {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                   </span>
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 truncate">{ws.name}</p>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <p className="text-xs font-semibold text-slate-700 truncate">{ws.name}</p>
+                      {ws.phases?.isCustom && (
+                        <span title="Custom Timeline" className="flex-shrink-0 text-amber-500">
+                          <Pencil className="w-2.5 h-2.5" />
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[10px] text-slate-400">{ws.locale} · {ws.workflow}</p>
                   </div>
                 </div>
@@ -285,23 +272,15 @@ export function GanttView({ worksets }: GanttViewProps) {
 
               {/* Expanded phase editor */}
               {isExpanded && p && (
-                <div className="flex border-t border-slate-100 bg-blue-50/30" onClick={e => e.stopPropagation()}>
-                  <div className="flex-shrink-0 px-4 py-3" style={{ width: LABEL_WIDTH }}>
-                    <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mt-0.5">Phase dates</p>
-                  </div>
+                <div className="flex border-t border-slate-100 bg-slate-50/40" onClick={e => e.stopPropagation()}>
+                  <div className="flex-shrink-0" style={{ width: LABEL_WIDTH }} />
                   <div className="flex-1 px-4 py-3">
-                    <div className="grid grid-cols-5 gap-3">
-                      <PhaseEditorColumn field="p1End"   label="1P+IAA ends"   color={PHASE_HEX.p1}  helperText="Shifts 2P + PHI"       phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
-                      <PhaseEditorColumn field="rev1End" label="Review 1 ends" color={PHASE_HEX.rev} helperText="Shifts 2P start + PHI"  phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
-                      <PhaseEditorColumn field="p2End"   label="2P ends"       color={PHASE_HEX.p2}  helperText="Shifts PHI / ETA"       phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
-                      <PhaseEditorColumn field="rev2End" label="Review 2 ends" color={PHASE_HEX.rev} helperText="Shifts PHI start + ETA" phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
-                      <PhaseEditorColumn field="etaDate" label="PHI ends / ETA" color={PHASE_HEX.phi} helperText="PHI phase length only" phases={p} onEdit={(f, d) => handlePhaseEdit(ws, f, d)} />
-                    </div>
-                    <button type="button" onClick={() => handleReset(ws)}
-                      className="mt-2 flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600 transition-colors">
-                      <RotateCcw className="w-3 h-3" />
-                      Reset to model calculation
-                    </button>
+                    <PhaseTimelineEditor
+                      defaultTimeline={getDefaultTimeline(ws)}
+                      currentTimeline={p}
+                      startDate={ws.startDate}
+                      onChange={next => updateWorkset(ws.id, { phases: next, eta: next.etaDate })}
+                    />
                   </div>
                 </div>
               )}
@@ -347,7 +326,11 @@ export function GanttView({ worksets }: GanttViewProps) {
         </div>
         <div className="flex items-center gap-1.5">
           <ChevronRight className="w-3 h-3 text-slate-400" />
-          <span className="text-[10px] text-slate-500">Click row to edit phases</span>
+          <span className="text-[10px] text-slate-500">Click row to edit phase timeline</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Pencil className="w-3 h-3 text-amber-500" />
+          <span className="text-[10px] text-slate-500">Custom Timeline</span>
         </div>
       </div>
     </div>

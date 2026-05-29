@@ -7,6 +7,8 @@ import { LOCALES_BY_REGION } from '@/lib/mock-data'
 import { Button } from '@/components/ui/Button'
 import { useStore } from '@/lib/store'
 import { calculateETA, calculateSuccessorETA, addWorkingDays, getSuccessorStartDate, getDefaultTeamSize, TIER2_LOCALES, WORKFLOW_BG } from '@/lib/eta-calculator'
+import { PhaseTimelineEditor } from './PhaseTimelineEditor'
+import { PhaseTimeline } from '@/lib/types'
 import { formatDate, cn, getEffectiveRisk, expiryCountdownLabel, RISK_COLORS, RISK_LABELS } from '@/lib/utils'
 import { AlertTriangle, Zap, Info, Link2, CalendarClock } from 'lucide-react'
 
@@ -34,7 +36,7 @@ type FormData = {
 
 interface WorksetFormProps {
   initial?: Workset
-  onSubmit: (data: FormData) => void | Promise<void>
+  onSubmit: (data: FormData, phases?: PhaseTimeline) => void | Promise<void>
   onCancel: () => void
   isEdit?: boolean
 }
@@ -83,7 +85,11 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
   // UI-only: whether this workset is a sequential (back-to-back) successor
   const [isBackToBack, setIsBackToBack] = useState(!!(initial?.predecessorId))
 
-  const [etaSuggestion, setEtaSuggestion] = useState<ReturnType<typeof calculateETA> | null>(null)
+  const [etaSuggestion,  setEtaSuggestion]  = useState<PhaseTimeline | null>(null)
+  // customTimeline: starts as etaSuggestion, can be edited by PhaseTimelineEditor
+  const [customTimeline, setCustomTimeline] = useState<PhaseTimeline | null>(
+    initial?.phases ?? null,
+  )
 
   // Worksets eligible as a predecessor: has phases, same workflow if already chosen (all statuses allowed)
   const predecessorOptions = worksets.filter(w =>
@@ -134,6 +140,8 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
     const result = calculateSuccessorETA(pred.phases, form.workflow, form.locale, n)
     setEtaSuggestion(result)
     set('eta', result.etaDate)
+    // Reset custom timeline whenever the base ETA changes (unless already custom)
+    setCustomTimeline(prev => (prev?.isCustom ? prev : result))
     // Auto-fill start date only when creating a new workset, not when editing
     if (!isEdit) {
       set('startDate', getSuccessorStartDate(pred.phases.etaDate))
@@ -150,6 +158,8 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
     if (!form.locale || !form.startDate || n < 1) return
     const result = calculateETA(form.workflow, form.locale, n, form.startDate)
     setEtaSuggestion(result)
+    // Reset custom timeline whenever the base ETA changes (unless already custom)
+    setCustomTimeline(prev => (prev?.isCustom ? prev : result))
     if (!form.eta || form.eta === '') {
       set('eta', result.etaDate)
     }
@@ -167,7 +177,7 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
   const localeGroups = LOCALES_BY_REGION[form.region] ?? {}
 
   return (
-    <form onSubmit={e => { e.preventDefault(); void onSubmit(form) }} className="space-y-5">
+    <form onSubmit={e => { e.preventDefault(); void onSubmit(form, customTimeline ?? undefined) }} className="space-y-5">
 
       {/* Name */}
       <div>
@@ -396,19 +406,12 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
         </div>
       </div>
 
-      {/* Phase preview */}
-      {etaSuggestion && form.locale && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            {isBackToBack ? <Link2 className="w-4 h-4 text-brand-500" /> : <Info className="w-4 h-4 text-brand-500" />}
-            <span className="text-xs font-semibold text-slate-700">
-              {isBackToBack ? 'Set 2 Phase Timeline — sequential' : `Estimated Phase Timeline (${etaSuggestion.model} model)`}
-            </span>
-          </div>
-
-          {/* Head start summary row */}
+      {/* Phase Timeline Editor */}
+      {etaSuggestion && customTimeline && form.locale && (
+        <div className="space-y-2">
+          {/* Head start banner (sequential only) */}
           {isBackToBack && etaSuggestion.headStart && (
-            <div className="mb-3 flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
               <div className="w-2 h-2 rounded-sm border border-dashed border-blue-400 bg-blue-100 flex-shrink-0" />
               <span className="text-[11px] text-blue-700">
                 <strong>{(etaSuggestion.headStart.headStartPct * 100).toFixed(1)}%</strong> of 1P+IAA pre-completed during Set 1's 2P window
@@ -416,26 +419,19 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
               </span>
             </div>
           )}
-          <div className="space-y-1.5 text-xs">
-            {[
-              { label: '1P + IAA',  start: etaSuggestion.p1Start,  end: etaSuggestion.p1End,   days: etaSuggestion.d1,  color: 'bg-blue-400' },
-              { label: 'Review',    start: etaSuggestion.rev1End,   end: etaSuggestion.rev1End, days: 1,                 color: 'bg-slate-300' },
-              { label: '2nd Pass',  start: etaSuggestion.p2Start,   end: etaSuggestion.p2End,   days: etaSuggestion.d2,  color: 'bg-orange-400' },
-              { label: 'PHI',       start: etaSuggestion.phiStart,  end: etaSuggestion.etaDate, days: etaSuggestion.dpf, color: 'bg-green-500' },
-            ].map(ph => (
-              <div key={ph.label} className="flex items-center gap-3">
-                <div className={cn('w-2 h-2 rounded-full flex-shrink-0', ph.color)} />
-                <span className="w-20 text-slate-600 font-medium">{ph.label}</span>
-                <span className="text-slate-400">
-                  {formatDate(ph.start)} → {formatDate(ph.end)}
-                </span>
-                <span className="text-slate-400">({ph.days}d)</span>
-              </div>
-            ))}
-          </div>
-          {etaSuggestion.model === 'Parallel' && (
-            <p className="text-[10px] text-amber-600 mt-2">
-              ⚡ Parallel model: 2P (4 users) and PHI Phase 1 (N−4 users) run simultaneously after IAA.
+          <PhaseTimelineEditor
+            defaultTimeline={etaSuggestion}
+            currentTimeline={customTimeline}
+            startDate={form.startDate}
+            onChange={next => {
+              setCustomTimeline(next)
+              set('eta', next.etaDate)
+            }}
+          />
+          {etaSuggestion.model === 'Parallel' && !customTimeline.isCustom && (
+            <p className="text-[10px] text-amber-600 flex items-center gap-1">
+              <Zap className="w-3 h-3" />
+              Parallel model: 2P (4 users) and PHI Phase 1 (N−4 users) run simultaneously after IAA.
             </p>
           )}
         </div>

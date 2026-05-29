@@ -29,13 +29,18 @@ function getWorksetPhases(ws: Workset): PhaseDef[] {
     // No phase data → treat entire span as PHI (solid)
     return [{ phase: 'phi', startDate: ws.startDate, endDate: ws.revisedEta ?? ws.eta }]
   }
-  const p = ws.phases
-  return [
-    { phase: 'p1',  startDate: p.p1Start,  endDate: p.p1End   },
-    { phase: 'rev', startDate: p.p1End,    endDate: p.rev1End  },
-    { phase: 'p2',  startDate: p.p2Start,  endDate: p.p2End   },
-    { phase: 'phi', startDate: p.phiStart, endDate: p.etaDate  },
+  const p      = ws.phases
+  const active = new Set(p.activePhases ?? ['p1', 'rev1', 'p2', 'rev2', 'phi'])
+
+  // Full 5-segment list — keys aligned with EditablePhaseKey order
+  const all: Array<{ key: string; def: PhaseDef }> = [
+    { key: 'p1',   def: { phase: 'p1',  startDate: p.p1Start,  endDate: p.p1End   } },
+    { key: 'rev1', def: { phase: 'rev', startDate: p.p1End,    endDate: p.rev1End  } },
+    { key: 'p2',   def: { phase: 'p2',  startDate: p.p2Start,  endDate: p.p2End   } },
+    { key: 'rev2', def: { phase: 'rev', startDate: p.p2End,    endDate: p.rev2End  } },
+    { key: 'phi',  def: { phase: 'phi', startDate: p.phiStart, endDate: p.etaDate  } },
   ]
+  return all.filter(s => active.has(s.key)).map(s => s.def)
 }
 
 // ─── Per-week data structures ────────────────────────────────────────────────
@@ -245,7 +250,8 @@ export function CalendarMonthView({ worksets }: CalendarMonthViewProps) {
                     : isLast  ? '0 6px 6px 0'
                     : '0'
 
-                  const phaseTitle = `${bar.ws.name} · ${bar.ws.locale} · ${bar.ws.workflow} — ${PHASE_LABEL[seg.phase]}`
+                  const customTag  = bar.ws.phases?.isCustom ? ' ✏ Custom Timeline' : ''
+                  const phaseTitle = `${bar.ws.name} · ${bar.ws.locale} · ${bar.ws.workflow} — ${PHASE_LABEL[seg.phase]}${customTag}`
 
                   return (
                     <div

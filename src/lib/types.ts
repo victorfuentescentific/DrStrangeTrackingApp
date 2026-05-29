@@ -1,3 +1,16 @@
+// Ordered list of the five editable phase keys
+export type EditablePhaseKey = 'p1' | 'rev1' | 'p2' | 'rev2' | 'phi'
+
+export const EDITABLE_PHASE_KEYS: EditablePhaseKey[] = ['p1', 'rev1', 'p2', 'rev2', 'phi']
+
+export const PHASE_META: Record<EditablePhaseKey, { label: string; color: string; bgClass: string }> = {
+  p1:   { label: '1P + IAA', color: '#3b82f6', bgClass: 'bg-blue-400'   },
+  rev1: { label: 'REV₁',     color: '#94a3b8', bgClass: 'bg-slate-400'  },
+  p2:   { label: '2nd Pass', color: '#f97316', bgClass: 'bg-orange-400' },
+  rev2: { label: 'REV₂',     color: '#94a3b8', bgClass: 'bg-slate-400'  },
+  phi:  { label: 'PHI',      color: '#22c55e', bgClass: 'bg-green-500'  },
+}
+
 export type WorksetStatus =
   | 'not-started'
   | 'in-progress'
@@ -49,6 +62,9 @@ export interface PhaseTimeline {
   model: 'Sequential' | 'Parallel'
   isTier2: boolean
   headStart?: HeadStartInfo  // present only when this workset is a successor
+  // Custom timeline fields — absent means auto-calculated (all 5 phases active)
+  activePhases?: EditablePhaseKey[]
+  isCustom?:     boolean
 }
 
 export interface AuditEntry {
