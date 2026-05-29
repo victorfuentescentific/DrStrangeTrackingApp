@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback, useRef } from 'react'
 import { Workset, PhaseTimeline } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
 import { calculateETA } from '@/lib/eta-calculator'
@@ -16,7 +16,9 @@ interface GanttViewProps {
 }
 
 
-const LABEL_WIDTH = 260
+const LABEL_WIDTH_DEFAULT = 320
+const LABEL_WIDTH_MIN     = 180
+const LABEL_WIDTH_MAX     = 560
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'TH', 'F', 'S'] as const
 
@@ -59,7 +61,27 @@ function getPhaseSegments(ws: Workset): GanttSeg[] {
 
 export function GanttView({ worksets }: GanttViewProps) {
   const { updateWorkset } = useStore()
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [expandedId,  setExpandedId]  = useState<string | null>(null)
+  const [labelWidth,  setLabelWidth]  = useState(LABEL_WIDTH_DEFAULT)
+  const dragStartX    = useRef<number>(0)
+  const dragStartW    = useRef<number>(LABEL_WIDTH_DEFAULT)
+
+  const startLabelResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragStartX.current = e.clientX
+    dragStartW.current = labelWidth
+
+    function onMove(ev: MouseEvent) {
+      const next = Math.max(LABEL_WIDTH_MIN, Math.min(LABEL_WIDTH_MAX, dragStartW.current + ev.clientX - dragStartX.current))
+      setLabelWidth(next)
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup',   onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+  }, [labelWidth])
 
   const active = useMemo(
     () => worksets.filter(w => w.startDate && w.eta),
@@ -128,7 +150,21 @@ export function GanttView({ worksets }: GanttViewProps) {
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
 
       {/* Header */}
-      <div style={{ marginLeft: LABEL_WIDTH }}>
+      <div className="flex">
+        {/* Label column header — shows resize handle on right edge */}
+        <div
+          className="relative flex-shrink-0 flex items-center px-4 py-2 bg-slate-50 border-b border-slate-200 select-none"
+          style={{ width: labelWidth }}
+        >
+          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Workset</span>
+          {/* Drag handle */}
+          <div
+            onMouseDown={startLabelResize}
+            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-brand-400/40 transition-colors z-10"
+            title="Drag to resize"
+          />
+        </div>
+        <div className="flex-1" style={{ marginLeft: 0 }}>
 
         {/* Row 1 — week labels */}
         <div className="relative h-6 bg-slate-50 border-b border-slate-100">
@@ -172,7 +208,8 @@ export function GanttView({ worksets }: GanttViewProps) {
           ))}
         </div>
 
-      </div>
+        </div>{/* end flex-1 chart header */}
+      </div>{/* end header flex row */}
 
       {/* Rows */}
       <div className="divide-y divide-slate-100">
@@ -194,13 +231,13 @@ export function GanttView({ worksets }: GanttViewProps) {
                 className="flex items-center h-12 hover:bg-slate-50 transition-colors cursor-pointer"
                 onClick={() => setExpandedId(isExpanded ? null : ws.id)}
               >
-                <div className="flex-shrink-0 px-4 flex items-center gap-2" style={{ width: LABEL_WIDTH }}>
+                <div className="flex-shrink-0 px-4 flex items-center gap-2" style={{ width: labelWidth }}>
                   <span className="text-slate-300 flex-shrink-0">
                     {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                   </span>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <p className="text-xs font-semibold text-slate-700 truncate">{ws.name}</p>
+                      <p className="text-xs font-semibold text-slate-700 leading-tight">{ws.name}</p>
                       {ws.phases?.isCustom && (
                         <span title="Custom Timeline" className="flex-shrink-0 text-amber-500">
                           <Pencil className="w-2.5 h-2.5" />
@@ -273,7 +310,7 @@ export function GanttView({ worksets }: GanttViewProps) {
               {/* Expanded phase editor */}
               {isExpanded && p && (
                 <div className="flex border-t border-slate-100 bg-slate-50/40" onClick={e => e.stopPropagation()}>
-                  <div className="flex-shrink-0" style={{ width: LABEL_WIDTH }} />
+                  <div className="flex-shrink-0" style={{ width: labelWidth }} />
                   <div className="flex-1 px-4 py-3">
                     <PhaseTimelineEditor
                       defaultTimeline={getDefaultTimeline(ws)}
@@ -287,7 +324,7 @@ export function GanttView({ worksets }: GanttViewProps) {
 
               {isExpanded && !p && (
                 <div className="flex border-t border-slate-100 bg-slate-50/50">
-                  <div className="flex-shrink-0" style={{ width: LABEL_WIDTH }} />
+                  <div className="flex-shrink-0" style={{ width: labelWidth }} />
                   <div className="px-4 py-3 text-[11px] text-slate-400">
                     No phase data — set an ETA and locale to enable phase editing.
                   </div>

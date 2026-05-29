@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Ban, ArrowUpRight, Trash2, CalendarClock, Layers, X } from 'lucide-react'
 import { Workset, PhaseTimeline, PhaseActuals } from '@/lib/types'
@@ -11,6 +11,68 @@ import { useStore } from '@/lib/store'
 import { ROLE_PERMISSIONS } from '@/lib/types'
 import { WORKFLOW_BG } from '@/lib/eta-calculator'
 import { PhaseEditor } from '@/components/worksets/PhaseEditor'
+
+// ─── Column resize hook ───────────────────────────────────────────────────────
+
+type ColKey = 'id' | 'name' | 'workflow' | 'status' | 'priority' | 'eta' | 'expiry' | 'actions'
+const COL_DEFAULTS: Record<ColKey, number> = {
+  id: 88, name: 240, workflow: 100, status: 110, priority: 90, eta: 130, expiry: 120, actions: 72,
+}
+const COL_MIN: Record<ColKey, number> = {
+  id: 60, name: 120, workflow: 80, status: 80, priority: 70, eta: 100, expiry: 90, actions: 60,
+}
+
+function useColResize() {
+  const [widths, setWidths] = useState<Record<ColKey, number>>(COL_DEFAULTS)
+  const dragRef = useRef<{ col: ColKey; startX: number; startW: number } | null>(null)
+
+  const startResize = useCallback((col: ColKey, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragRef.current = { col, startX: e.clientX, startW: widths[col] }
+
+    function onMove(ev: MouseEvent) {
+      if (!dragRef.current) return
+      const { col: c, startX, startW } = dragRef.current
+      const next = Math.max(COL_MIN[c], startW + ev.clientX - startX)
+      setWidths(prev => ({ ...prev, [c]: next }))
+    }
+    function onUp() {
+      dragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup',   onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+  }, [widths])
+
+  return { widths, startResize }
+}
+
+// ─── ResizableTh ─────────────────────────────────────────────────────────────
+
+function ResizableTh({
+  col, width, children, startResize,
+}: {
+  col: ColKey
+  width: number
+  children?: React.ReactNode
+  startResize: (col: ColKey, e: React.MouseEvent) => void
+}) {
+  return (
+    <th
+      className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide relative select-none group/th"
+      style={{ width, minWidth: COL_MIN[col] }}
+    >
+      {children}
+      <div
+        onMouseDown={e => startResize(col, e)}
+        className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize opacity-0 group-hover/th:opacity-100 hover:bg-brand-400/40 transition-opacity z-10"
+        title="Drag to resize"
+      />
+    </th>
+  )
+}
 
 interface WorksetTableProps {
   worksets: Workset[]
@@ -24,6 +86,9 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
 
   // Phase quick-edit modal
   const [phasesFor, setPhasesFor] = useState<Workset | null>(null)
+
+  // Resizable columns
+  const { widths, startResize } = useColResize()
 
   if (worksets.length === 0) {
     return (
@@ -39,17 +104,17 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
     <>
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="text-sm" style={{ tableLayout: 'fixed', width: Object.values(widths).reduce((a, b) => a + b, 0) }}>
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50 text-left">
-              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-24">ID</th>
-              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Workset</th>
-              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Workflow</th>
-              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
-              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Priority</th>
-              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">ETA</th>
-              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Expiry</th>
-              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-20"></th>
+              <ResizableTh col="id"       width={widths.id}       startResize={startResize}>ID</ResizableTh>
+              <ResizableTh col="name"     width={widths.name}     startResize={startResize}>Workset</ResizableTh>
+              <ResizableTh col="workflow" width={widths.workflow}  startResize={startResize}>Workflow</ResizableTh>
+              <ResizableTh col="status"   width={widths.status}   startResize={startResize}>Status</ResizableTh>
+              <ResizableTh col="priority" width={widths.priority}  startResize={startResize}>Priority</ResizableTh>
+              <ResizableTh col="eta"      width={widths.eta}      startResize={startResize}>ETA</ResizableTh>
+              <ResizableTh col="expiry"   width={widths.expiry}   startResize={startResize}>Expiry</ResizableTh>
+              <ResizableTh col="actions"  width={widths.actions}  startResize={startResize} />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -73,10 +138,10 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
                   </td>
 
                   {/* Name + locale + inline flags */}
-                  <td className="px-4 py-3 max-w-xs">
+                  <td className="px-4 py-3">
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="font-medium text-slate-800 truncate max-w-[180px]">{ws.name}</p>
+                        <p className="font-medium text-slate-800 break-words">{ws.name}</p>
                         {ws.isBlocked && (
                           <span title="Blocked">
                             <Ban className="w-3 h-3 text-red-500 flex-shrink-0" />

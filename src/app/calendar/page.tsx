@@ -151,9 +151,9 @@ function FilterSidebar({
                       onChange={() => toggleWorkset(ws.id)}
                       className="rounded border-slate-300 text-brand-500 focus:ring-brand-400 w-3.5 h-3.5 flex-shrink-0"
                     />
-                    <div className="min-w-0">
+                    <div>
                       <p className={cn(
-                        'text-[10px] leading-tight truncate',
+                        'text-[10px] leading-tight',
                         checked ? 'text-slate-800 font-semibold' : 'text-slate-500 group-hover:text-slate-700',
                       )}>
                         {ws.name}
