@@ -74,7 +74,7 @@ export function GanttView({ worksets }: GanttViewProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const active = useMemo(
-    () => worksets.filter(w => w.status !== 'completed' && w.startDate && w.eta),
+    () => worksets.filter(w => w.startDate && w.eta),
     [worksets],
   )
 

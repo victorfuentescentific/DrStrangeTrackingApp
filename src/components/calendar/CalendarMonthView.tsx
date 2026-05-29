@@ -60,7 +60,7 @@ function getBarsForWeek(weekStart: Date, weekEnd: Date, worksets: Workset[]): Wo
   const raw: Array<Omit<WorksetWeekBar, 'lane'>> = []
 
   for (const ws of worksets) {
-    if (ws.status === 'completed' || !ws.startDate || !ws.eta) continue
+    if (!ws.startDate || !ws.eta) continue
 
     const wsStart = parseISO(ws.startDate)
     const wsEnd   = parseISO(ws.revisedEta ?? ws.eta)

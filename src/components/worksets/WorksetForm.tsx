@@ -85,10 +85,9 @@ export function WorksetForm({ initial, onSubmit, onCancel, isEdit }: WorksetForm
 
   const [etaSuggestion, setEtaSuggestion] = useState<ReturnType<typeof calculateETA> | null>(null)
 
-  // Worksets eligible as a predecessor: has phases, not completed, same workflow if already chosen
+  // Worksets eligible as a predecessor: has phases, same workflow if already chosen (all statuses allowed)
   const predecessorOptions = worksets.filter(w =>
     w.phases &&
-    w.status !== 'completed' &&
     (!form.workflow || w.workflow === form.workflow),
   )
 
