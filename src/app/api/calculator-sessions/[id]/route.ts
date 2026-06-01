@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 // ─────────────────────────────────────────────────────────────────────────────
 // PATCH /api/calculator-sessions/[id]
 //
-// Admin-only: update label, date_from, date_to of a saved calculator session.
+// Admin-only: update any editable field of a saved calculator session.
 // All fields are optional — only provided fields are updated.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -17,13 +17,19 @@ async function getSession() {
   return verifyToken(token)
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const DATE_RE  = /^\d{4}-\d{2}-\d{2}$/
+const UNITS    = ['min audio', 'rep', 'WU'] as const
 
 function validDate(v: unknown): string | null {
   if (!v || typeof v !== 'string') return null
   if (!DATE_RE.test(v)) return null
   const d = new Date(v + 'T12:00:00')
   return isNaN(d.getTime()) ? null : v
+}
+
+function validNonNegNum(v: unknown): number | null {
+  if (typeof v !== 'number' || isNaN(v) || v < 0) return null
+  return v
 }
 
 export async function PATCH(
@@ -41,15 +47,41 @@ export async function PATCH(
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
   const update: Record<string, unknown> = {}
+  const errors: string[] = []
 
+  // ── String fields ──────────────────────────────────────────────────────────
   if ('label' in body) {
     update.label = body.label ? String(body.label).slice(0, 120) : null
   }
-  if ('date_from' in body) {
-    update.date_from = validDate(body.date_from)
+  if ('locale' in body) {
+    if (!body.locale || typeof body.locale !== 'string') errors.push('locale must be a non-empty string')
+    else update.locale = body.locale.trim()
   }
-  if ('date_to' in body) {
-    update.date_to = validDate(body.date_to)
+  if ('workflow' in body) {
+    if (!body.workflow || typeof body.workflow !== 'string') errors.push('workflow must be a non-empty string')
+    else update.workflow = body.workflow.trim()
+  }
+  if ('unit' in body) {
+    if (!UNITS.includes(body.unit as typeof UNITS[number])) errors.push(`unit must be one of: ${UNITS.join(', ')}`)
+    else update.unit = body.unit
+  }
+
+  // ── Numeric fields ─────────────────────────────────────────────────────────
+  const numFields = ['hc', 'total_hours', 'iaa_days', 'p2_days', 'phi_days', 'output_full', 'output_buffered'] as const
+  for (const field of numFields) {
+    if (field in body) {
+      const val = validNonNegNum(body[field])
+      if (val === null) errors.push(`${field} must be a non-negative number`)
+      else update[field] = val
+    }
+  }
+
+  // ── Date fields ────────────────────────────────────────────────────────────
+  if ('date_from' in body) update.date_from = validDate(body.date_from)
+  if ('date_to'   in body) update.date_to   = validDate(body.date_to)
+
+  if (errors.length > 0) {
+    return NextResponse.json({ error: 'Validation failed', details: errors }, { status: 422 })
   }
 
   if (Object.keys(update).length === 0) {
@@ -60,7 +92,7 @@ export async function PATCH(
     .from('calculator_sessions')
     .update(update)
     .eq('id', id)
-    .select('id, label, date_from, date_to')
+    .select('id, locale, workflow, hc, total_hours, iaa_days, p2_days, phi_days, output_full, output_buffered, unit, label, date_from, date_to')
     .single()
 
   if (error) {

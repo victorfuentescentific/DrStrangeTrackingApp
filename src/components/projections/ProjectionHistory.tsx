@@ -26,10 +26,22 @@ interface CalcSession {
 }
 
 interface EditDraft {
-  label:     string
-  date_from: string
-  date_to:   string
+  locale:          string
+  workflow:        string
+  hc:              string
+  total_hours:     string
+  iaa_days:        string
+  p2_days:         string
+  phi_days:        string
+  output_full:     string
+  output_buffered: string
+  unit:            string
+  label:           string
+  date_from:       string
+  date_to:         string
 }
+
+const UNITS = ['min audio', 'rep', 'WU'] as const
 
 const UNIT_BADGE: Record<string, string> = {
   'min audio': 'bg-indigo-100 text-indigo-700',
@@ -49,6 +61,24 @@ function fmtRange(from: string | null, to: string | null): string {
   if (from && to)   return `${fmtDate(from)} → ${fmtDate(to)}`
   if (from)         return `from ${fmtDate(from)}`
   return `until ${fmtDate(to)}`
+}
+
+function sessionToDraft(s: CalcSession): EditDraft {
+  return {
+    locale:          s.locale,
+    workflow:        s.workflow,
+    hc:              String(s.hc),
+    total_hours:     String(s.total_hours),
+    iaa_days:        String(s.iaa_days),
+    p2_days:         String(s.p2_days),
+    phi_days:        String(s.phi_days),
+    output_full:     String(s.output_full),
+    output_buffered: String(s.output_buffered),
+    unit:            s.unit,
+    label:           s.label ?? '',
+    date_from:       s.date_from ?? '',
+    date_to:         s.date_to   ?? '',
+  }
 }
 
 // ─── Filter pill ──────────────────────────────────────────────────────────────
@@ -77,6 +107,11 @@ function Pill({
   )
 }
 
+// ─── Shared input styles ───────────────────────────────────────────────────────
+
+const INPUT_CLS = 'w-full px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500'
+const NUM_INPUT_CLS = `${INPUT_CLS} text-center`
+
 // ─── Inline edit row ──────────────────────────────────────────────────────────
 
 interface EditRowProps {
@@ -89,66 +124,156 @@ interface EditRowProps {
 }
 
 function EditRow({ session: s, draft, saving, onChange, onSave, onCancel }: EditRowProps) {
+  function set<K extends keyof EditDraft>(field: K, value: EditDraft[K]) {
+    onChange({ ...draft, [field]: value })
+  }
+
   return (
     <tr className="bg-brand-50/30 border-l-2 border-brand-500">
 
-      {/* Date saved */}
+      {/* Date saved — read-only */}
       <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
         {format(new Date(s.created_at), 'dd MMM yyyy HH:mm')}
       </td>
 
       {/* Locale */}
-      <td className="px-3 py-3">
-        <span className="font-mono text-xs font-semibold text-slate-700">{s.locale}</span>
-      </td>
-
-      {/* Workflow */}
-      <td className="px-3 py-3 text-xs text-slate-600">{s.workflow}</td>
-
-      {/* HC */}
-      <td className="px-3 py-3 text-center text-xs text-slate-600">{s.hc}</td>
-
-      {/* Hours */}
-      <td className="px-3 py-3 text-center text-xs text-slate-600">{s.total_hours}h</td>
-
-      {/* IAA / 2P / PHI */}
-      <td className="px-3 py-3 text-center text-xs text-slate-400">{s.iaa_days > 0 ? `${s.iaa_days}d` : '—'}</td>
-      <td className="px-3 py-3 text-center text-xs text-slate-400">{s.p2_days  > 0 ? `${s.p2_days}d`  : '—'}</td>
-      <td className="px-3 py-3 text-center text-xs text-slate-400">{s.phi_days > 0 ? `${s.phi_days}d` : '—'}</td>
-
-      {/* Output */}
-      <td className="px-3 py-3 text-right">
-        <span className="text-xs font-bold text-slate-800">{s.output_full.toLocaleString()}</span>
-        <span className={cn('ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full',
-          UNIT_BADGE[s.unit] ?? 'bg-slate-100 text-slate-500')}>
-          {s.unit}
-        </span>
-      </td>
-
-      {/* Buffered */}
-      <td className="px-3 py-3 text-right text-xs text-slate-500">
-        {s.output_buffered > 0 ? s.output_buffered.toLocaleString() : '—'}
-      </td>
-
-      {/* Label (editable) */}
-      <td className="px-3 py-3">
+      <td className="px-3 py-3 min-w-[90px]">
         <input
           type="text"
-          value={draft.label}
-          onChange={e => onChange({ ...draft, label: e.target.value })}
-          maxLength={120}
-          placeholder="Label…"
-          className="w-full px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500"
+          value={draft.locale}
+          onChange={e => set('locale', e.target.value)}
+          placeholder="e.g. en_GB"
+          className={INPUT_CLS}
         />
       </td>
 
-      {/* Production window (editable) */}
+      {/* Workflow */}
+      <td className="px-3 py-3 min-w-[110px]">
+        <input
+          type="text"
+          value={draft.workflow}
+          onChange={e => set('workflow', e.target.value)}
+          placeholder="Workflow"
+          className={INPUT_CLS}
+        />
+      </td>
+
+      {/* HC */}
+      <td className="px-3 py-3 min-w-[56px]">
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={draft.hc}
+          onChange={e => set('hc', e.target.value)}
+          className={NUM_INPUT_CLS}
+        />
+      </td>
+
+      {/* Total hours */}
+      <td className="px-3 py-3 min-w-[64px]">
+        <input
+          type="number"
+          min={0}
+          step={0.5}
+          value={draft.total_hours}
+          onChange={e => set('total_hours', e.target.value)}
+          className={NUM_INPUT_CLS}
+        />
+      </td>
+
+      {/* IAA days */}
+      <td className="px-3 py-3 min-w-[56px]">
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={draft.iaa_days}
+          onChange={e => set('iaa_days', e.target.value)}
+          className={NUM_INPUT_CLS}
+        />
+      </td>
+
+      {/* 2P days */}
+      <td className="px-3 py-3 min-w-[56px]">
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={draft.p2_days}
+          onChange={e => set('p2_days', e.target.value)}
+          className={NUM_INPUT_CLS}
+        />
+      </td>
+
+      {/* PHI days */}
+      <td className="px-3 py-3 min-w-[56px]">
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={draft.phi_days}
+          onChange={e => set('phi_days', e.target.value)}
+          className={NUM_INPUT_CLS}
+        />
+      </td>
+
+      {/* 1P Output */}
+      <td className="px-3 py-3 min-w-[80px]">
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={draft.output_full}
+          onChange={e => set('output_full', e.target.value)}
+          className={NUM_INPUT_CLS}
+        />
+      </td>
+
+      {/* Buffered */}
+      <td className="px-3 py-3 min-w-[80px]">
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={draft.output_buffered}
+          onChange={e => set('output_buffered', e.target.value)}
+          className={NUM_INPUT_CLS}
+        />
+      </td>
+
+      {/* Unit */}
+      <td className="px-3 py-3 min-w-[90px]">
+        <select
+          value={draft.unit}
+          onChange={e => set('unit', e.target.value)}
+          className={INPUT_CLS}
+        >
+          {UNITS.map(u => (
+            <option key={u} value={u}>{u}</option>
+          ))}
+        </select>
+      </td>
+
+      {/* Label */}
+      <td className="px-3 py-3 min-w-[140px]">
+        <input
+          type="text"
+          value={draft.label}
+          onChange={e => set('label', e.target.value)}
+          maxLength={120}
+          placeholder="Label…"
+          className={INPUT_CLS}
+        />
+      </td>
+
+      {/* Production window */}
       <td className="px-5 py-3 min-w-[220px]">
         <div className="flex items-center gap-1.5">
           <input
             type="date"
             value={draft.date_from}
-            onChange={e => onChange({ ...draft, date_from: e.target.value })}
+            onChange={e => set('date_from', e.target.value)}
             className="flex-1 px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
           <span className="text-slate-400 text-xs shrink-0">→</span>
@@ -156,7 +281,7 @@ function EditRow({ session: s, draft, saving, onChange, onSave, onCancel }: Edit
             type="date"
             value={draft.date_to}
             min={draft.date_from || undefined}
-            onChange={e => onChange({ ...draft, date_to: e.target.value })}
+            onChange={e => set('date_to', e.target.value)}
             className="flex-1 px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </div>
@@ -197,7 +322,11 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
 
   // ── Edit state ──────────────────────────────────────────────────────────
   const [editingId,  setEditingId]  = useState<string | null>(null)
-  const [editDraft,  setEditDraft]  = useState<EditDraft>({ label: '', date_from: '', date_to: '' })
+  const [editDraft,  setEditDraft]  = useState<EditDraft>(sessionToDraft({
+    id: '', locale: '', workflow: '', hc: 0, total_hours: 0,
+    iaa_days: 0, p2_days: 0, phi_days: 0, output_full: 0, output_buffered: 0,
+    unit: 'min audio', label: null, date_from: null, date_to: null, created_at: '',
+  }))
   const [editSaving, setEditSaving] = useState(false)
   const [editError,  setEditError]  = useState<string | null>(null)
 
@@ -227,11 +356,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
 
   function startEdit(s: CalcSession) {
     setEditingId(s.id)
-    setEditDraft({
-      label:     s.label     ?? '',
-      date_from: s.date_from ?? '',
-      date_to:   s.date_to   ?? '',
-    })
+    setEditDraft(sessionToDraft(s))
     setEditError(null)
   }
 
@@ -249,22 +374,27 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          label:     editDraft.label.trim()     || null,
-          date_from: editDraft.date_from.trim() || null,
-          date_to:   editDraft.date_to.trim()   || null,
+          locale:          editDraft.locale.trim(),
+          workflow:        editDraft.workflow.trim(),
+          hc:              parseFloat(editDraft.hc)              || 0,
+          total_hours:     parseFloat(editDraft.total_hours)     || 0,
+          iaa_days:        parseFloat(editDraft.iaa_days)        || 0,
+          p2_days:         parseFloat(editDraft.p2_days)         || 0,
+          phi_days:        parseFloat(editDraft.phi_days)        || 0,
+          output_full:     parseFloat(editDraft.output_full)     || 0,
+          output_buffered: parseFloat(editDraft.output_buffered) || 0,
+          unit:            editDraft.unit,
+          label:           editDraft.label.trim()     || null,
+          date_from:       editDraft.date_from.trim() || null,
+          date_to:         editDraft.date_to.trim()   || null,
         }),
       })
       const data = await res.json()
       if (!res.ok) {
         setEditError(data.error ?? `Save failed (HTTP ${res.status})`)
       } else {
-        // Patch the session in local state without a full reload
         setSessions(prev =>
-          prev.map(s =>
-            s.id === editingId
-              ? { ...s, label: data.label, date_from: data.date_from, date_to: data.date_to }
-              : s,
-          ),
+          prev.map(s => s.id === editingId ? { ...s, ...data } : s),
         )
         setEditingId(null)
       }
@@ -299,7 +429,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
         </button>
       </div>
 
-      {/* ── Error ── */}
+      {/* ── Errors ── */}
       {error && (
         <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -373,6 +503,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
                 <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">PHI</th>
                 <th className="text-right  px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">1P Output</th>
                 <th className="text-right  px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Buffered</th>
+                <th className="text-left   px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Unit</th>
                 <th className="text-left   px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Label</th>
                 <th className="text-left   px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Production window</th>
                 {isAdmin && <th className="px-3 py-2.5 w-24" />}
@@ -429,23 +560,25 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
                       <span className="text-xs font-bold text-slate-800">
                         {s.output_full.toLocaleString()}
                       </span>
-                      <span className={cn(
-                        'ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full',
-                        UNIT_BADGE[s.unit] ?? 'bg-slate-100 text-slate-500',
-                      )}>
-                        {s.unit}
-                      </span>
                     </td>
 
                     <td className="px-3 py-3 text-right text-xs text-slate-500">
                       {s.output_buffered > 0 ? s.output_buffered.toLocaleString() : '—'}
                     </td>
 
+                    <td className="px-3 py-3">
+                      <span className={cn(
+                        'text-[9px] font-semibold px-1.5 py-0.5 rounded-full',
+                        UNIT_BADGE[s.unit] ?? 'bg-slate-100 text-slate-500',
+                      )}>
+                        {s.unit}
+                      </span>
+                    </td>
+
                     <td className="px-3 py-3 text-xs text-slate-500 max-w-[140px] truncate">
                       {s.label ?? <span className="text-slate-300">—</span>}
                     </td>
 
-                    {/* Production window */}
                     <td className="px-5 py-3 text-xs whitespace-nowrap">
                       {s.date_from || s.date_to ? (
                         <span className="text-brand-700 font-medium">
@@ -456,13 +589,12 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
                       )}
                     </td>
 
-                    {/* Admin edit button */}
                     {isAdmin && (
                       <td className="px-3 py-3 text-right">
                         <button
                           onClick={() => startEdit(s)}
                           disabled={editingId !== null}
-                          title="Edit label and production window"
+                          title="Edit row"
                           className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded border border-slate-200 text-slate-500 hover:border-brand-400 hover:text-brand-600 bg-white disabled:opacity-30"
                         >
                           <Pencil className="w-2.5 h-2.5" />
@@ -495,7 +627,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
 
       <p className="text-[11px] text-slate-400">
         Full record of all production calculations saved by you, newest first.
-        {isAdmin && ' Admins can edit the label and production window of any entry.'}
+        {isAdmin && ' Admins can edit any field by clicking ✏ on a row.'}
       </p>
     </div>
   )
