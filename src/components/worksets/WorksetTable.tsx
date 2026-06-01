@@ -50,19 +50,26 @@ function useColResize() {
 }
 
 // ─── ResizableTh ─────────────────────────────────────────────────────────────
+// flex=true  → column has no fixed width; it stretches to fill remaining space.
+//              minWidth = current dragged value so it never collapses below that.
+// flex=false → column has an explicit pixel width (all other columns).
 
 function ResizableTh({
-  col, width, children, startResize,
+  col, width, flex = false, children, startResize,
 }: {
   col: ColKey
   width: number
+  flex?: boolean
   children?: React.ReactNode
   startResize: (col: ColKey, e: React.MouseEvent) => void
 }) {
   return (
     <th
       className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide relative select-none group/th"
-      style={{ width, minWidth: COL_MIN[col] }}
+      style={flex
+        ? { minWidth: width }                      // stretches to fill, min enforced
+        : { width, minWidth: COL_MIN[col] }        // fixed pixel width
+      }
     >
       {children}
       <div
@@ -104,11 +111,17 @@ export function WorksetTable({ worksets }: WorksetTableProps) {
     <>
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="text-sm" style={{ tableLayout: 'fixed', width: Object.values(widths).reduce((a, b) => a + b, 0) }}>
+        <table className="w-full text-sm" style={{
+          tableLayout: 'fixed',
+          // Allow horizontal scroll only when columns are dragged wider than the container.
+          // minWidth = sum of all fixed cols + minimum name col width.
+          minWidth: widths.id + widths.workflow + widths.status + widths.priority + widths.eta + widths.expiry + widths.actions + COL_MIN.name,
+        }}>
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50 text-left">
               <ResizableTh col="id"       width={widths.id}       startResize={startResize}>ID</ResizableTh>
-              <ResizableTh col="name"     width={widths.name}     startResize={startResize}>Workset</ResizableTh>
+              {/* flex=true: name column stretches to fill all remaining space */}
+              <ResizableTh col="name"     width={widths.name}     flex startResize={startResize}>Workset</ResizableTh>
               <ResizableTh col="workflow" width={widths.workflow}  startResize={startResize}>Workflow</ResizableTh>
               <ResizableTh col="status"   width={widths.status}   startResize={startResize}>Status</ResizableTh>
               <ResizableTh col="priority" width={widths.priority}  startResize={startResize}>Priority</ResizableTh>
