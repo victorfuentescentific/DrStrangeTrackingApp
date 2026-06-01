@@ -1162,7 +1162,7 @@ function AdminView({ session }: { session: SessionUser }) {
               Submit for
             </label>
             {users.length === 0 ? (
-              <p className="text-sm text-amber-600">Loading freelancers…</p>
+              <p className="text-sm text-amber-600">Loading contractors…</p>
             ) : (
               <select value={forUserId} onChange={e => setForUserId(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white text-slate-800">
@@ -1173,7 +1173,7 @@ function AdminView({ session }: { session: SessionUser }) {
                 ))}
               </select>
             )}
-            <p className="text-xs text-amber-600 mt-1.5">You are submitting hours on behalf of this freelancer</p>
+            <p className="text-xs text-amber-600 mt-1.5">You are submitting hours on behalf of this contractor</p>
           </div>
 
           {forUser && (
@@ -1272,7 +1272,7 @@ export default function SubmitPage() {
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {isAdmin
-              ? 'Submit and manage freelancer daily hour logs'
+              ? 'Submit and manage contractor daily hour logs'
               : 'Record your daily work session — complete all questions'
             }
           </p>

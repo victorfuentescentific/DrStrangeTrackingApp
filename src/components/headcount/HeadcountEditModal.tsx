@@ -18,6 +18,7 @@ const GROUPS: Array<{
     label: string
     type?: 'text' | 'date' | 'textarea' | 'email' | 'select'
     options?: string[]
+    optionLabels?: Record<string, string>   // display label override per option value
     cols?: 1 | 2
   }>
 }> = [
@@ -26,10 +27,10 @@ const GROUPS: Array<{
     fields: [
       { key: 'name',         label: 'Name',              type: 'text',   cols: 2 },
       { key: 'locale',       label: 'Locale',            type: 'select', options: ['en_GB','de_DE','nl_NL','fr_FR','da_DK','nb_NO','fi_FI','sv_SE','N/A'] },
-      { key: 'role',         label: 'Access Role',       type: 'select', options: ['admin','lead','fte','freelancer'] },
+      { key: 'role',         label: 'Access Role',       type: 'select', options: ['admin','lead','fte','freelancer'], optionLabels: { fte: 'Centific', freelancer: 'Contractor' } },
       { key: 'position',     label: 'Position (Job Title)', type: 'select', options: ['Annotator','SME','Language Lead','Management','N/A'] },
       { key: 'workflow',     label: 'Workflow',          type: 'select', options: ['Transcriber','Scriber','Lead','N/A'] },
-      { key: 'resourceType', label: 'Resource Type',     type: 'select', options: ['FTE','Freelancer','Management'] },
+      { key: 'resourceType', label: 'Resource Type',     type: 'select', options: ['FTE','Freelancer','Management'], optionLabels: { FTE: 'Centific', Freelancer: 'Contractor' } },
     ],
   },
   {
@@ -55,7 +56,7 @@ const GROUPS: Array<{
   {
     label: 'IDs & Equipment',
     fields: [
-      { key: 'empId',        label: 'Emp ID (FTE only)', type: 'text' },
+      { key: 'empId',        label: 'Emp ID (Centific only)', type: 'text' },
       { key: 'msId',         label: 'MS Personnel ID',   type: 'text' },
       { key: 'oneFormaId',   label: 'OneForma 2.0 ID',   type: 'text' },
       { key: 'phoneVersion', label: 'Phone Version',     type: 'text' },
@@ -246,7 +247,7 @@ export function HeadcountEditModal({ record, onClose, onSaved }: HeadcountEditMo
                           className="w-full text-sm rounded-lg border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           <option value="">—</option>
-                          {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                          {f.options.map(o => <option key={o} value={o}>{f.optionLabels?.[o] ?? o}</option>)}
                         </select>
                       </div>
                     )

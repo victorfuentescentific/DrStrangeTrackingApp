@@ -33,11 +33,25 @@ const RESOURCE_TYPE_COLORS: Record<string, string> = {
   Management: 'bg-purple-50 text-purple-700',
 }
 
+// Display labels — stored values stay unchanged in the DB
+const RESOURCE_TYPE_LABELS: Record<string, string> = {
+  FTE:        'Centific',
+  Freelancer: 'Contractor',
+  Management: 'Management',
+}
+
 const ROLE_COLORS: Record<string, string> = {
   admin:      'bg-purple-50 text-purple-700',
   lead:       'bg-blue-50 text-blue-700',
   fte:        'bg-green-50 text-green-700',
   freelancer: 'bg-gray-50 text-gray-600',
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  admin:      'Admin',
+  lead:       'Lead',
+  fte:        'Centific',
+  freelancer: 'Contractor',
 }
 
 const ONBOARDING_COLORS: Record<string, string> = {
@@ -254,13 +268,13 @@ export default function HeadcountOverviewPage() {
                           } else if (col.key === 'resourceType' && v) {
                             display = (
                               <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${RESOURCE_TYPE_COLORS[String(v)] ?? 'bg-slate-100 text-slate-600'}`}>
-                                {String(v)}
+                                {RESOURCE_TYPE_LABELS[String(v)] ?? String(v)}
                               </span>
                             )
                           } else if (col.key === 'role' && v) {
                             display = (
                               <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${ROLE_COLORS[String(v)] ?? 'bg-slate-100 text-slate-600'}`}>
-                                {String(v)}
+                                {ROLE_LABELS[String(v)] ?? String(v)}
                               </span>
                             )
                           } else if (col.key === 'locale' && v) {

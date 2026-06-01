@@ -214,7 +214,7 @@ export default function AdminHoursPage() {
   ]
 
   return (
-    <AppLayout title="Team Hours" subtitle="Daily submissions by freelancer — actual vs. model hours">
+    <AppLayout title="Team Hours" subtitle="Daily submissions by contractor — actual vs. model hours">
       {loading ? (
         <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
           Loading…
@@ -251,7 +251,7 @@ export default function AdminHoursPage() {
               </div>
               <p className="text-slate-600 font-medium">No hours submitted yet.</p>
               <p className="text-slate-400 text-sm">
-                Share the <span className="font-mono text-slate-500">/submit</span> link with your freelancers.
+                Share the <span className="font-mono text-slate-500">/submit</span> link with your contractors.
               </p>
             </div>
           ) : (
@@ -269,7 +269,7 @@ export default function AdminHoursPage() {
                   icon={<Users className="w-5 h-5 text-emerald-500" />}
                   label="Active contributors"
                   value={String(activeContributors)}
-                  sub="unique freelancers"
+                  sub="unique contractors"
                   accent="emerald"
                 />
                 <SummaryCard
@@ -314,7 +314,7 @@ export default function AdminHoursPage() {
               {/* Section B — By-person breakdown table */}
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="px-5 py-4 border-b border-slate-100">
-                  <h2 className="text-sm font-semibold text-slate-700">By Freelancer</h2>
+                  <h2 className="text-sm font-semibold text-slate-700">By Contractor</h2>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
