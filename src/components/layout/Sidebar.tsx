@@ -51,7 +51,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     label: 'Admin',
     items: [
       { href: '/admin/headcount',    label: 'HC Overview',        icon: UserCog,        roles: ['admin', 'lead'] },
-      { href: '/admin/submissions',  label: 'Hours Submissions',  icon: ShieldCheck,    roles: ['admin'] },
+      { href: '/admin/submissions',  label: 'Hours Submissions',  icon: ShieldCheck,    roles: ['admin', 'pm'] },
       { href: '/admin/eod',          label: 'EOD Dashboard',      icon: ClipboardCheck, roles: ['admin', 'pm', 'lead'] },
       { href: '/submit',             label: 'Daily Hours',        icon: ClipboardList,  roles: ['admin', 'pm', 'freelancer'] },
       { href: '/eod',                label: 'End of Day',         icon: ClipboardCheck },

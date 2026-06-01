@@ -200,12 +200,12 @@ export async function PATCH(req: NextRequest) {
 }
 
 // ─── DELETE /api/daily-submissions?id= ───────────────────────────────────────
-// Admin only.
+// Admin and PM only.
 
 export async function DELETE(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (session.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (session.role !== 'admin' && session.role !== 'pm') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
