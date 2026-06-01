@@ -492,7 +492,9 @@ function HoursForm({ session, forUser }: HoursFormProps) {
         <p className="text-sm font-medium text-slate-800">
           {forUser ? forUser.name : session.name}
         </p>
-        {isFreelancer && <p className="text-[11px] text-slate-400 mt-0.5">From your account</p>}
+        {!forUser && (
+          <p className="text-[11px] text-slate-400 mt-0.5">Auto-filled from your account</p>
+        )}
       </SectionCard>
 
       {/* Q2 Locale */}
