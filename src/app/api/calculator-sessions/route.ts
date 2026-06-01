@@ -50,12 +50,25 @@ export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await db
+  // ── Role-based scoping ───────────────────────────────────────────────────────
+  // admin / pm  → all sessions
+  // lead        → all sessions for their locale only
+  // everyone else → only their own sessions
+  let query = db
     .from('calculator_sessions')
     .select('*')
-    .eq('user_id', session.id)
     .order('created_at', { ascending: false })
-    .limit(50)
+    .limit(200)
+
+  if (session.role === 'admin' || session.role === 'pm') {
+    // no additional filter — see everything
+  } else if (session.role === 'lead' && session.locale) {
+    query = query.eq('locale', session.locale)
+  } else {
+    query = query.eq('user_id', session.id)
+  }
+
+  const { data, error } = await query
 
   if (error) {
     // Table may not exist yet — return empty array gracefully

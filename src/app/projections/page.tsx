@@ -27,8 +27,9 @@ const SUBTITLES: Record<Tab, string> = {
 export default function ProjectionsPage() {
   const [tab, setTab] = useState<Tab>('weekly')
   const { user } = useSession()
-  const isAdmin = user?.role === 'admin'
-  const canEdit = isAdmin || user?.role === 'lead'
+  const role    = user?.role ?? 'viewer'
+  const isAdmin = role === 'admin'
+  const canEdit = isAdmin || role === 'lead'
 
   return (
     <AppLayout title="Projections" subtitle={SUBTITLES[tab]}>
@@ -52,7 +53,7 @@ export default function ProjectionsPage() {
 
       {tab === 'weekly'     && <WeeklyProjections isPrivileged={canEdit} />}
       {tab === 'calculator' && <ProductionCalculator />}
-      {tab === 'history'    && <ProjectionHistory isAdmin={isAdmin} />}
+      {tab === 'history'    && <ProjectionHistory role={role} userLocale={user?.locale} />}
       {tab === 'actuals'    && <ProjectionActuals canEdit={canEdit} />}
     </AppLayout>
   )

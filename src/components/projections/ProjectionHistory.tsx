@@ -289,7 +289,12 @@ function EditRow({ draft, saving, createdAt, onChange, onSave, onCancel }: EditR
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
+export function ProjectionHistory({ role, userLocale }: { role: string; userLocale?: string | null }) {
+  const isAdmin   = role === 'admin'
+  const isPm      = role === 'pm'
+  const isLead    = role === 'lead'
+  const canSeeAll = isAdmin || isPm                   // sees every session
+  const canEdit   = isAdmin                           // PATCH endpoint is admin-only
   const [sessions,       setSessions]       = useState<CalcSession[]>([])
   const [loading,        setLoading]        = useState(true)
   const [error,          setError]          = useState<string | null>(null)
@@ -400,9 +405,19 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
         <div className="flex items-center gap-2">
           <ClipboardList className="w-4 h-4 text-brand-500" />
           <h2 className="text-sm font-bold text-slate-800">Production Calculator Log</h2>
-          {isAdmin && (
+          {canEdit && (
             <span className="text-[10px] font-semibold text-brand-600 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-full">
               Admin — click ✏ to edit a row
+            </span>
+          )}
+          {isPm && (
+            <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+              Management view — all locales
+            </span>
+          )}
+          {isLead && userLocale && (
+            <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+              Lead view — {userLocale} only
             </span>
           )}
         </div>
@@ -476,12 +491,12 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
                 <th className="text-left   px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Unit</th>
                 <th className="text-left   px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Label</th>
                 <th className="text-left   px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap">Production window</th>
-                {isAdmin && <th className="px-3 py-2.5 w-24" />}
+                {canEdit && <th className="px-3 py-2.5 w-24" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filtered.map(s => {
-                const isEditing = isAdmin && editingId === s.id
+                const isEditing = canEdit && editingId === s.id
 
                 if (isEditing) {
                   return (
@@ -534,7 +549,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
                         <span className="text-slate-300">—</span>
                       )}
                     </td>
-                    {isAdmin && (
+                    {canEdit && (
                       <td className="px-3 py-3 text-right">
                         <button
                           onClick={() => startEdit(s)}
@@ -570,8 +585,12 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       <p className="text-[11px] text-slate-400">
-        Full record of all production calculations saved by you, newest first.
-        {isAdmin && ' Admins can edit any field by clicking ✏ on a row. Changing days auto-recalculates the output.'}
+        {canSeeAll
+          ? 'Full record of all production calculations saved by the entire team, newest first.'
+          : isLead && userLocale
+            ? `Full record of all production calculations saved by ${userLocale} team members, newest first.`
+            : 'Full record of all production calculations saved by you, newest first.'}
+        {canEdit && ' Admins can edit any field by clicking ✏ on a row. Changing days auto-recalculates the output.'}
       </p>
     </div>
   )
