@@ -15,7 +15,7 @@ type NavItem = {
   href: string
   label: string
   icon: typeof LayoutDashboard
-  roles?: ('admin' | 'lead' | 'fte' | 'freelancer')[]
+  roles?: ('admin' | 'pm' | 'lead' | 'fte' | 'freelancer')[]
 }
 
 const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
@@ -52,7 +52,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: '/admin/headcount',    label: 'HC Overview',        icon: UserCog,      roles: ['admin', 'lead'] },
       { href: '/admin/submissions',  label: 'Hours Submissions',  icon: ShieldCheck,  roles: ['admin'] },
-      { href: '/submit',             label: 'Submit Hours',       icon: ClipboardList, roles: ['admin', 'freelancer'] },
+      { href: '/submit',             label: 'Daily Hours',        icon: ClipboardList, roles: ['admin', 'pm', 'freelancer'] },
       { href: '/notes',              label: 'Notes & Links',      icon: NotebookPen,  roles: ['admin'] },
     ],
   },

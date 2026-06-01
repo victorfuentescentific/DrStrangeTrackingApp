@@ -1208,7 +1208,7 @@ export default function SubmitPage() {
       .then((data: { user: SessionUser } | null) => {
         if (!data) return
         const u: SessionUser = data.user
-        if (u.role !== 'freelancer' && u.role !== 'admin') {
+        if (u.role !== 'freelancer' && u.role !== 'admin' && u.role !== 'pm') {
           router.push('/')
           return
         }
@@ -1233,7 +1233,7 @@ export default function SubmitPage() {
 
   if (!user) return null
 
-  const isAdmin = user.role === 'admin'
+  const isAdmin = user.role === 'admin' || user.role === 'pm'
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -1267,9 +1267,7 @@ export default function SubmitPage() {
       {/* Main content */}
       <main className={cn('mx-auto px-4 py-8', isAdmin ? 'max-w-3xl' : 'max-w-lg')}>
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-slate-800">
-            {isAdmin ? 'Hours Submissions' : 'Log your hours'}
-          </h1>
+          <h1 className="text-xl font-bold text-slate-800">Daily Hours Submission Form</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {isAdmin
               ? 'Submit and manage contractor daily hour logs'
