@@ -9,7 +9,7 @@ export interface SessionUser {
   id: string
   name: string
   email: string
-  role: 'admin' | 'pm' | 'lead' | 'fte' | 'freelancer'
+  role: 'admin' | 'pm' | 'lead' | 'fte' | 'freelancer' | 'viewer'
   locale: string | null
   employeeType: string | null
   workflow: string | null

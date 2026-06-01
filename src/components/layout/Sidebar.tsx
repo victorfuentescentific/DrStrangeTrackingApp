@@ -6,7 +6,7 @@ import {
   LayoutDashboard, ListChecks, Kanban, BarChart3,
   Settings, ChevronRight, CalendarDays, Calculator, Clock,
   CalendarCheck, Users, Plane, ShieldCheck, UserCog, NotebookPen, Sparkles,
-  ClipboardList,
+  ClipboardList, ClipboardCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/hooks/useSession'
@@ -15,7 +15,7 @@ type NavItem = {
   href: string
   label: string
   icon: typeof LayoutDashboard
-  roles?: ('admin' | 'pm' | 'lead' | 'fte' | 'freelancer')[]
+  roles?: ('admin' | 'pm' | 'lead' | 'fte' | 'freelancer' | 'viewer')[]
 }
 
 const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
@@ -50,10 +50,12 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Admin',
     items: [
-      { href: '/admin/headcount',    label: 'HC Overview',        icon: UserCog,      roles: ['admin', 'lead'] },
-      { href: '/admin/submissions',  label: 'Hours Submissions',  icon: ShieldCheck,  roles: ['admin'] },
-      { href: '/submit',             label: 'Daily Hours',        icon: ClipboardList, roles: ['admin', 'pm', 'freelancer'] },
-      { href: '/notes',              label: 'Notes & Links',      icon: NotebookPen,  roles: ['admin'] },
+      { href: '/admin/headcount',    label: 'HC Overview',        icon: UserCog,        roles: ['admin', 'lead'] },
+      { href: '/admin/submissions',  label: 'Hours Submissions',  icon: ShieldCheck,    roles: ['admin'] },
+      { href: '/admin/eod',          label: 'EOD Dashboard',      icon: ClipboardCheck, roles: ['admin', 'pm', 'lead'] },
+      { href: '/submit',             label: 'Daily Hours',        icon: ClipboardList,  roles: ['admin', 'pm', 'freelancer'] },
+      { href: '/eod',                label: 'End of Day',         icon: ClipboardCheck },
+      { href: '/notes',              label: 'Notes & Links',      icon: NotebookPen,    roles: ['admin'] },
     ],
   },
 ]
