@@ -10,6 +10,8 @@ interface MultiSelectProps {
   options: string[]
   /** Optional placeholder when nothing is selected. Defaults to `All ${label}`. */
   emptyLabel?: string
+  /** Optional display labels for option values, e.g. { Freelancer: 'Contractor' }. */
+  optionLabels?: Record<string, string>
 }
 
 /**
@@ -17,7 +19,7 @@ interface MultiSelectProps {
  * Selected items appear as small pills in the trigger; the dropdown is a
  * checkbox list with a search box for long option sets.
  */
-export function MultiSelect({ label, value, onChange, options, emptyLabel }: MultiSelectProps) {
+export function MultiSelect({ label, value, onChange, options, emptyLabel, optionLabels }: MultiSelectProps) {
   const [open,   setOpen]   = useState(false)
   const [search, setSearch] = useState('')
   const ref = useRef<HTMLDivElement>(null)
@@ -32,8 +34,10 @@ export function MultiSelect({ label, value, onChange, options, emptyLabel }: Mul
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [open])
 
+  const displayLabel = (opt: string) => optionLabels?.[opt] ?? opt
+
   const filtered = search.trim()
-    ? options.filter(o => o.toLowerCase().includes(search.toLowerCase()))
+    ? options.filter(o => displayLabel(o).toLowerCase().includes(search.toLowerCase()))
     : options
 
   function toggle(opt: string) {
@@ -47,7 +51,7 @@ export function MultiSelect({ label, value, onChange, options, emptyLabel }: Mul
   const summary = value.length === 0
     ? (emptyLabel ?? `All ${label}`)
     : value.length === 1
-      ? value[0]
+      ? displayLabel(value[0])
       : `${value.length} ${label}`
 
   return (
@@ -122,7 +126,7 @@ export function MultiSelect({ label, value, onChange, options, emptyLabel }: Mul
                     }`}>
                       {selected && <Check className="w-3 h-3 text-white" />}
                     </span>
-                    <span className="truncate">{opt}</span>
+                    <span className="truncate">{displayLabel(opt)}</span>
                   </button>
                 )
               })

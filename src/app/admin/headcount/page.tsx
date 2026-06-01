@@ -194,7 +194,7 @@ export default function HeadcountOverviewPage() {
           </div>
           <MultiSelect label="Locale"        value={locales}       onChange={setLocales}       options={data?.facets.locales       ?? []} />
           <MultiSelect label="Workflow"      value={workflows}     onChange={setWorkflows}     options={data?.facets.workflows     ?? []} />
-          <MultiSelect label="Resource Type" value={resourceTypes} onChange={setResourceTypes} options={data?.facets.resourceTypes ?? []} />
+          <MultiSelect label="Resource Type" value={resourceTypes} onChange={setResourceTypes} options={data?.facets.resourceTypes ?? []} optionLabels={RESOURCE_TYPE_LABELS} />
           <MultiSelect label="Status"        value={statuses}      onChange={setStatuses}      options={data?.facets.statuses      ?? []} />
           {anyFilter && (
             <button
