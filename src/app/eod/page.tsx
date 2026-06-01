@@ -70,7 +70,7 @@ function minutesUntil(targetH: number, targetM: number): number {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const LOCALES = ['en_GB', 'de_DE', 'nl_NL', 'fr_FR', 'da_DK', 'nb_NO'] as const
+const LOCALES = ['en_GB', 'de_DE', 'nl_NL', 'fr_FR', 'da_DK', 'nb_NO', 'fi_FI', 'sv_SE'] as const
 const WORKFLOWS = ['DAX', 'DMO', 'Scribing'] as const
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -240,10 +240,15 @@ function EodForm({ session, existing, readOnly, onSaved }: EodFormProps) {
     setError('')
 
     const errs: string[] = []
-    if (!date)         errs.push('Date is required.')
-    if (!locale)       errs.push('Locale is required.')
-    if (!workflow)     errs.push('Workflow is required.')
-    if (!workset.trim()) errs.push('Workset is required.')
+    if (!date)              errs.push('Date is required.')
+    if (!locale)            errs.push('Locale is required.')
+    if (!workflow)          errs.push('Workflow is required.')
+    if (!workset.trim())    errs.push('Workset is required.')
+    if (numReports === 0 && minutesCompleted === 0 && minutesTranscribed === 0)
+      errs.push('At least one Production Metric must be filled.')
+    if (phTranscribing === 0 && phIaa === 0 && phPhi === 0 && owReviewRework === 0 && owItTraining === 0 && owNeat === 0 && owWaiting === 0)
+      errs.push('At least one Hours field must be filled.')
+    if (!remarks.trim())    errs.push('Remarks are required.')
     if (errs.length > 0) { setError(errs.join(' ')); return }
 
     setSubmitting(true)
@@ -417,10 +422,14 @@ function EodForm({ session, existing, readOnly, onSaved }: EodFormProps) {
 
       {/* ── Remarks ───────────────────────────────────────────── */}
       <SectionCard>
-        <FieldLabel label="17. Remarks" hint="Any additional notes for the client report" />
+        <FieldLabel
+          label="17. Remarks"
+          hint="Additional information about blockers, notes or context for today's working day. Do not indicate minutes or time here."
+          required
+        />
         <textarea value={remarks} onChange={e => setRemarks(e.target.value)}
           rows={3} disabled={disabled}
-          placeholder="Any blockers, notes, or context for today's session…"
+          placeholder="e.g. Workset delayed due to audio quality issues, waiting for PM confirmation on batch…"
           className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 placeholder:text-slate-300 resize-none disabled:opacity-50" />
       </SectionCard>
 
