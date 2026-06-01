@@ -302,6 +302,7 @@ export function ProductionCalculator() {
   const [iaaDays, setIaaDays]       = useState(0)
   const [p2Days, setP2Days]         = useState(0)
   const [phiDays, setPhiDays]       = useState(0)
+  const [revDays, setRevDays]       = useState(0)
 
   // ── Session history state ────────────────────────────────────────────────
   const [sessions,     setSessions]     = useState<CalcSession[]>([])
@@ -330,6 +331,7 @@ export function ProductionCalculator() {
     setIaaDays(s.iaa_days)
     setP2Days(s.p2_days)
     setPhiDays(s.phi_days)
+    setRevDays((s as CalcSession & { rev_days?: number }).rev_days ?? 0)
     setDateFrom(s.date_from ?? '')
     setDateTo(s.date_to ?? '')
     setLabel(s.label ?? '')
@@ -342,13 +344,14 @@ export function ProductionCalculator() {
     const iaaHours  = hc   * HOURS_PER_DAY * iaaDays
     const p2Hours   = p2Hc * HOURS_PER_DAY * p2Days
     const phiHours  = hc   * HOURS_PER_DAY * phiDays
-    const consumed  = iaaHours + p2Hours + phiHours
+    const revHours  = hc   * HOURS_PER_DAY * revDays
+    const consumed  = iaaHours + p2Hours + phiHours + revHours
     const remaining = Math.max(0, totalHours - consumed)
     const rate      = get1PRate(workflow, locale) / HOURS_PER_DAY
     const output    = remaining * rate
     const perPerson = hc > 0 ? output / hc : 0
-    return { iaaHours, p2Hours, phiHours, consumed, remaining, output, perPerson }
-  }, [locale, workflow, hc, totalHours, iaaDays, p2Days, phiDays, p2Hc])
+    return { iaaHours, p2Hours, phiHours, revHours, consumed, remaining, output, perPerson }
+  }, [locale, workflow, hc, totalHours, iaaDays, p2Days, phiDays, revDays, p2Hc])
 
   const unit      = getUnit(workflow)
   const shortage  = calc.consumed > totalHours
@@ -371,6 +374,7 @@ export function ProductionCalculator() {
           iaa_days:    iaaDays,
           p2_days:     p2Days,
           phi_days:    phiDays,
+          rev_days:    revDays,
           output_full:     Math.round(calc.output),
           output_buffered: Math.round(calc.output * BUFFER),
           unit,
@@ -467,11 +471,17 @@ export function ProductionCalculator() {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-3">
               Days invested per phase
             </p>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <NumInput
                 label="IAA days"
                 value={iaaDays}
                 onChange={setIaaDays}
+                helper={`All ${hc} HC → ${hc * HOURS_PER_DAY} h/day`}
+              />
+              <NumInput
+                label="Review days"
+                value={revDays}
+                onChange={setRevDays}
                 helper={`All ${hc} HC → ${hc * HOURS_PER_DAY} h/day`}
               />
               <NumInput
@@ -497,13 +507,14 @@ export function ProductionCalculator() {
           <span className="text-sm font-semibold text-slate-700">Hours breakdown</span>
         </div>
         <div className="p-5 space-y-2">
-          <BreakdownRow label="IAA"   hc={hc}    days={iaaDays} hours={calc.iaaHours} accent="bg-blue-50" />
-          <BreakdownRow label="2Pass" hc={p2Hc}  days={p2Days}  hours={calc.p2Hours}  accent="bg-orange-50" />
-          <BreakdownRow label="PHI"   hc={hc}    days={phiDays} hours={calc.phiHours} accent="bg-green-50" />
+          <BreakdownRow label="IAA"    hc={hc}    days={iaaDays} hours={calc.iaaHours} accent="bg-blue-50" />
+          <BreakdownRow label="Review" hc={hc}    days={revDays} hours={calc.revHours} accent="bg-purple-50" />
+          <BreakdownRow label="2Pass"  hc={p2Hc}  days={p2Days}  hours={calc.p2Hours}  accent="bg-orange-50" />
+          <BreakdownRow label="PHI"    hc={hc}    days={phiDays} hours={calc.phiHours} accent="bg-green-50" />
 
           <div className="border-t border-slate-100 pt-3 space-y-1.5">
             <div className="flex justify-between text-xs text-slate-500">
-              <span>Total hours consumed (IAA + 2Pass + PHI)</span>
+              <span>Total hours consumed (IAA + Review + 2Pass + PHI)</span>
               <span className={cn('font-semibold', shortage ? 'text-red-600' : 'text-slate-700')}>
                 {calc.consumed.toLocaleString()} h
               </span>

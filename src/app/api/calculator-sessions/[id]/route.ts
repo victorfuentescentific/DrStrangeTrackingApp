@@ -67,7 +67,7 @@ export async function PATCH(
   }
 
   // ── Numeric fields ─────────────────────────────────────────────────────────
-  const numFields = ['hc', 'total_hours', 'iaa_days', 'p2_days', 'phi_days', 'output_full', 'output_buffered'] as const
+  const numFields = ['hc', 'total_hours', 'iaa_days', 'p2_days', 'phi_days', 'rev_days', 'output_full', 'output_buffered'] as const
   for (const field of numFields) {
     if (field in body) {
       const val = validNonNegNum(body[field])
@@ -92,7 +92,7 @@ export async function PATCH(
     .from('calculator_sessions')
     .update(update)
     .eq('id', id)
-    .select('id, locale, workflow, hc, total_hours, iaa_days, p2_days, phi_days, output_full, output_buffered, unit, label, date_from, date_to')
+    .select('id, locale, workflow, hc, total_hours, iaa_days, p2_days, phi_days, rev_days, output_full, output_buffered, unit, label, date_from, date_to')
     .single()
 
   if (error) {

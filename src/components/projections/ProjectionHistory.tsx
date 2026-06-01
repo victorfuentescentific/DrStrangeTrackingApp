@@ -4,6 +4,20 @@ import { useEffect, useState, useMemo } from 'react'
 import { format } from 'date-fns'
 import { ClipboardList, Loader2, AlertTriangle, RefreshCw, Pencil, Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { get1PRate } from '@/lib/eta-calculator'
+import type { WorkflowType } from '@/lib/types'
+
+// ─── Shared constants (kept in sync with ProductionCalculator) ────────────────
+
+const P2_HC: Record<string, number> = {
+  en_GB: 3,
+  de_DE: 4,
+  fr_FR: 4,
+  nl_NL: 4,
+}
+const DEFAULT_P2_HC  = 4
+const HOURS_PER_DAY  = 8
+const BUFFER         = 0.80
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,6 +30,7 @@ interface CalcSession {
   iaa_days:        number
   p2_days:         number
   phi_days:        number
+  rev_days:        number
   output_full:     number
   output_buffered: number
   unit:            string
@@ -33,6 +48,7 @@ interface EditDraft {
   iaa_days:        string
   p2_days:         string
   phi_days:        string
+  rev_days:        string
   output_full:     string
   output_buffered: string
   unit:            string
@@ -72,6 +88,7 @@ function sessionToDraft(s: CalcSession): EditDraft {
     iaa_days:        String(s.iaa_days),
     p2_days:         String(s.p2_days),
     phi_days:        String(s.phi_days),
+    rev_days:        String(s.rev_days ?? 0),
     output_full:     String(s.output_full),
     output_buffered: String(s.output_buffered),
     unit:            s.unit,
@@ -81,17 +98,37 @@ function sessionToDraft(s: CalcSession): EditDraft {
   }
 }
 
+/** Recalculate output_full and output_buffered from a draft's inputs. */
+function recalcOutputs(d: EditDraft): { output_full: string; output_buffered: string } {
+  const hc         = parseFloat(d.hc)         || 0
+  const totalHours = parseFloat(d.total_hours) || 0
+  const iaaDays    = parseFloat(d.iaa_days)    || 0
+  const p2Days     = parseFloat(d.p2_days)     || 0
+  const phiDays    = parseFloat(d.phi_days)    || 0
+  const revDays    = parseFloat(d.rev_days)    || 0
+  const p2Hc       = P2_HC[d.locale] ?? DEFAULT_P2_HC
+
+  const iaaHours   = hc   * HOURS_PER_DAY * iaaDays
+  const p2Hours    = p2Hc * HOURS_PER_DAY * p2Days
+  const phiHours   = hc   * HOURS_PER_DAY * phiDays
+  const revHours   = hc   * HOURS_PER_DAY * revDays
+  const consumed   = iaaHours + p2Hours + phiHours + revHours
+  const remaining  = Math.max(0, totalHours - consumed)
+  const rate       = get1PRate(d.workflow as WorkflowType, d.locale) / HOURS_PER_DAY
+  const output     = Math.round(remaining * rate)
+
+  return {
+    output_full:     String(output),
+    output_buffered: String(Math.round(output * BUFFER)),
+  }
+}
+
+// Fields that drive the auto-recalculation
+const CALC_FIELDS = ['hc', 'total_hours', 'iaa_days', 'p2_days', 'phi_days', 'rev_days', 'locale', 'workflow'] as const
+
 // ─── Filter pill ──────────────────────────────────────────────────────────────
 
-function Pill({
-  label,
-  active,
-  onClick,
-}: {
-  label:   string
-  active:  boolean
-  onClick: () => void
-}) {
+function Pill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -109,21 +146,20 @@ function Pill({
 
 // ─── Shared input styles ───────────────────────────────────────────────────────
 
-const INPUT_CLS = 'w-full px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500'
-const NUM_INPUT_CLS = `${INPUT_CLS} text-center`
+const BASE_INPUT = 'w-full px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500'
 
 // ─── Inline edit row ──────────────────────────────────────────────────────────
 
 interface EditRowProps {
-  session:   CalcSession
-  draft:     EditDraft
-  saving:    boolean
-  onChange:  (draft: EditDraft) => void
-  onSave:    () => void
-  onCancel:  () => void
+  draft:    EditDraft
+  saving:   boolean
+  createdAt: string
+  onChange: (draft: EditDraft) => void
+  onSave:   () => void
+  onCancel: () => void
 }
 
-function EditRow({ session: s, draft, saving, onChange, onSave, onCancel }: EditRowProps) {
+function EditRow({ draft, saving, createdAt, onChange, onSave, onCancel }: EditRowProps) {
   function set<K extends keyof EditDraft>(field: K, value: EditDraft[K]) {
     onChange({ ...draft, [field]: value })
   }
@@ -133,176 +169,116 @@ function EditRow({ session: s, draft, saving, onChange, onSave, onCancel }: Edit
 
       {/* Date saved — read-only */}
       <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
-        {format(new Date(s.created_at), 'dd MMM yyyy HH:mm')}
+        {format(new Date(createdAt), 'dd MMM yyyy HH:mm')}
       </td>
 
       {/* Locale */}
       <td className="px-3 py-3 min-w-[90px]">
-        <input
-          type="text"
-          value={draft.locale}
+        <input type="text" value={draft.locale}
           onChange={e => set('locale', e.target.value)}
-          placeholder="e.g. en_GB"
-          className={INPUT_CLS}
-        />
+          placeholder="e.g. en_GB" className={BASE_INPUT} />
       </td>
 
       {/* Workflow */}
       <td className="px-3 py-3 min-w-[110px]">
-        <input
-          type="text"
-          value={draft.workflow}
+        <input type="text" value={draft.workflow}
           onChange={e => set('workflow', e.target.value)}
-          placeholder="Workflow"
-          className={INPUT_CLS}
-        />
+          placeholder="Workflow" className={BASE_INPUT} />
       </td>
 
       {/* HC */}
       <td className="px-3 py-3 min-w-[56px]">
-        <input
-          type="number"
-          min={0}
-          step={1}
-          value={draft.hc}
+        <input type="number" min={0} step={1} value={draft.hc}
           onChange={e => set('hc', e.target.value)}
-          className={NUM_INPUT_CLS}
-        />
+          className={`${BASE_INPUT} text-center`} />
       </td>
 
       {/* Total hours */}
       <td className="px-3 py-3 min-w-[64px]">
-        <input
-          type="number"
-          min={0}
-          step={0.5}
-          value={draft.total_hours}
+        <input type="number" min={0} step={0.5} value={draft.total_hours}
           onChange={e => set('total_hours', e.target.value)}
-          className={NUM_INPUT_CLS}
-        />
+          className={`${BASE_INPUT} text-center`} />
       </td>
 
       {/* IAA days */}
       <td className="px-3 py-3 min-w-[56px]">
-        <input
-          type="number"
-          min={0}
-          step={1}
-          value={draft.iaa_days}
+        <input type="number" min={0} step={1} value={draft.iaa_days}
           onChange={e => set('iaa_days', e.target.value)}
-          className={NUM_INPUT_CLS}
-        />
+          className={`${BASE_INPUT} text-center`} />
+      </td>
+
+      {/* Review days */}
+      <td className="px-3 py-3 min-w-[56px]">
+        <input type="number" min={0} step={1} value={draft.rev_days}
+          onChange={e => set('rev_days', e.target.value)}
+          className={`${BASE_INPUT} text-center`} />
       </td>
 
       {/* 2P days */}
       <td className="px-3 py-3 min-w-[56px]">
-        <input
-          type="number"
-          min={0}
-          step={1}
-          value={draft.p2_days}
+        <input type="number" min={0} step={1} value={draft.p2_days}
           onChange={e => set('p2_days', e.target.value)}
-          className={NUM_INPUT_CLS}
-        />
+          className={`${BASE_INPUT} text-center`} />
       </td>
 
       {/* PHI days */}
       <td className="px-3 py-3 min-w-[56px]">
-        <input
-          type="number"
-          min={0}
-          step={1}
-          value={draft.phi_days}
+        <input type="number" min={0} step={1} value={draft.phi_days}
           onChange={e => set('phi_days', e.target.value)}
-          className={NUM_INPUT_CLS}
-        />
+          className={`${BASE_INPUT} text-center`} />
       </td>
 
-      {/* 1P Output */}
+      {/* 1P Output — auto-recalculated, still editable */}
       <td className="px-3 py-3 min-w-[80px]">
-        <input
-          type="number"
-          min={0}
-          step={1}
-          value={draft.output_full}
+        <input type="number" min={0} step={1} value={draft.output_full}
           onChange={e => set('output_full', e.target.value)}
-          className={NUM_INPUT_CLS}
-        />
+          className={`${BASE_INPUT} text-right font-bold`} />
       </td>
 
-      {/* Buffered */}
+      {/* Buffered — auto-recalculated, still editable */}
       <td className="px-3 py-3 min-w-[80px]">
-        <input
-          type="number"
-          min={0}
-          step={1}
-          value={draft.output_buffered}
+        <input type="number" min={0} step={1} value={draft.output_buffered}
           onChange={e => set('output_buffered', e.target.value)}
-          className={NUM_INPUT_CLS}
-        />
+          className={`${BASE_INPUT} text-right`} />
       </td>
 
       {/* Unit */}
       <td className="px-3 py-3 min-w-[90px]">
-        <select
-          value={draft.unit}
-          onChange={e => set('unit', e.target.value)}
-          className={INPUT_CLS}
-        >
-          {UNITS.map(u => (
-            <option key={u} value={u}>{u}</option>
-          ))}
+        <select value={draft.unit} onChange={e => set('unit', e.target.value)} className={BASE_INPUT}>
+          {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
         </select>
       </td>
 
       {/* Label */}
       <td className="px-3 py-3 min-w-[140px]">
-        <input
-          type="text"
-          value={draft.label}
+        <input type="text" value={draft.label}
           onChange={e => set('label', e.target.value)}
-          maxLength={120}
-          placeholder="Label…"
-          className={INPUT_CLS}
-        />
+          maxLength={120} placeholder="Label…" className={BASE_INPUT} />
       </td>
 
       {/* Production window */}
       <td className="px-5 py-3 min-w-[220px]">
         <div className="flex items-center gap-1.5">
-          <input
-            type="date"
-            value={draft.date_from}
+          <input type="date" value={draft.date_from}
             onChange={e => set('date_from', e.target.value)}
-            className="flex-1 px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
+            className="flex-1 px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500" />
           <span className="text-slate-400 text-xs shrink-0">→</span>
-          <input
-            type="date"
-            value={draft.date_to}
+          <input type="date" value={draft.date_to}
             min={draft.date_from || undefined}
             onChange={e => set('date_to', e.target.value)}
-            className="flex-1 px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
+            className="flex-1 px-2 py-1 text-xs border border-brand-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500" />
         </div>
       </td>
 
       {/* Actions */}
       <td className="px-3 py-3 text-right whitespace-nowrap">
-        <button
-          onClick={onSave}
-          disabled={saving}
-          title="Save"
-          className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] font-semibold rounded bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition-colors mr-1"
-        >
+        <button onClick={onSave} disabled={saving} title="Save"
+          className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] font-semibold rounded bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition-colors mr-1">
           {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
           Save
         </button>
-        <button
-          onClick={onCancel}
-          title="Cancel"
-          className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] font-semibold rounded bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
-        >
+        <button onClick={onCancel} title="Cancel"
+          className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] font-semibold rounded bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors">
           <X className="w-3 h-3" />
           Cancel
         </button>
@@ -320,13 +296,15 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
   const [localeFilter,   setLocaleFilter]   = useState<string>('all')
   const [workflowFilter, setWorkflowFilter] = useState<string>('all')
 
-  // ── Edit state ──────────────────────────────────────────────────────────
+  const blankDraft: EditDraft = {
+    locale: '', workflow: '', hc: '0', total_hours: '0',
+    iaa_days: '0', p2_days: '0', phi_days: '0', rev_days: '0',
+    output_full: '0', output_buffered: '0', unit: 'min audio',
+    label: '', date_from: '', date_to: '',
+  }
+
   const [editingId,  setEditingId]  = useState<string | null>(null)
-  const [editDraft,  setEditDraft]  = useState<EditDraft>(sessionToDraft({
-    id: '', locale: '', workflow: '', hc: 0, total_hours: 0,
-    iaa_days: 0, p2_days: 0, phi_days: 0, output_full: 0, output_buffered: 0,
-    unit: 'min audio', label: null, date_from: null, date_to: null, created_at: '',
-  }))
+  const [editDraft,  setEditDraft]  = useState<EditDraft>(blankDraft)
   const [editSaving, setEditSaving] = useState(false)
   const [editError,  setEditError]  = useState<string | null>(null)
 
@@ -345,12 +323,11 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
   const allWorkflows = useMemo(() => [...new Set(sessions.map(s => s.workflow))].sort(), [sessions])
 
   const filtered = useMemo(
-    () =>
-      sessions.filter(
-        s =>
-          (localeFilter   === 'all' || s.locale   === localeFilter) &&
-          (workflowFilter === 'all' || s.workflow === workflowFilter),
-      ),
+    () => sessions.filter(
+      s =>
+        (localeFilter   === 'all' || s.locale   === localeFilter) &&
+        (workflowFilter === 'all' || s.workflow === workflowFilter),
+    ),
     [sessions, localeFilter, workflowFilter],
   )
 
@@ -363,6 +340,17 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
   function cancelEdit() {
     setEditingId(null)
     setEditError(null)
+  }
+
+  /** When a calculation-driving field changes, auto-update output_full / output_buffered. */
+  function handleDraftChange(newDraft: EditDraft) {
+    const calcChanged = CALC_FIELDS.some(f => newDraft[f] !== editDraft[f])
+    if (calcChanged) {
+      const recalculated = recalcOutputs(newDraft)
+      setEditDraft({ ...newDraft, ...recalculated })
+    } else {
+      setEditDraft(newDraft)
+    }
   }
 
   async function saveEdit() {
@@ -381,6 +369,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
           iaa_days:        parseFloat(editDraft.iaa_days)        || 0,
           p2_days:         parseFloat(editDraft.p2_days)         || 0,
           phi_days:        parseFloat(editDraft.phi_days)        || 0,
+          rev_days:        parseFloat(editDraft.rev_days)        || 0,
           output_full:     parseFloat(editDraft.output_full)     || 0,
           output_buffered: parseFloat(editDraft.output_buffered) || 0,
           unit:            editDraft.unit,
@@ -393,9 +382,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
       if (!res.ok) {
         setEditError(data.error ?? `Save failed (HTTP ${res.status})`)
       } else {
-        setSessions(prev =>
-          prev.map(s => s.id === editingId ? { ...s, ...data } : s),
-        )
+        setSessions(prev => prev.map(s => s.id === editingId ? { ...s, ...data } : s))
         setEditingId(null)
       }
     } catch (err) {
@@ -419,12 +406,8 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
             </span>
           )}
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-          title="Refresh"
-        >
+        <button onClick={load} disabled={loading}
+          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Refresh">
           <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
         </button>
       </div>
@@ -432,15 +415,12 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
       {/* ── Errors ── */}
       {error && (
         <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs">
-          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-          {error}
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />{error}
         </div>
       )}
-
       {editError && (
         <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs">
-          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-          Edit failed: {editError}
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />Edit failed: {editError}
         </div>
       )}
 
@@ -449,21 +429,11 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-semibold text-slate-500 shrink-0">Locale:</span>
           {['all', ...allLocales].map(l => (
-            <Pill
-              key={l}
-              label={l === 'all' ? 'All' : l}
-              active={localeFilter === l}
-              onClick={() => setLocaleFilter(l)}
-            />
+            <Pill key={l} label={l === 'all' ? 'All' : l} active={localeFilter === l} onClick={() => setLocaleFilter(l)} />
           ))}
           <span className="text-[11px] font-semibold text-slate-500 shrink-0 ml-3">Workflow:</span>
           {['all', ...allWorkflows].map(w => (
-            <Pill
-              key={w}
-              label={w === 'all' ? 'All' : w}
-              active={workflowFilter === w}
-              onClick={() => setWorkflowFilter(w)}
-            />
+            <Pill key={w} label={w === 'all' ? 'All' : w} active={workflowFilter === w} onClick={() => setWorkflowFilter(w)} />
           ))}
         </div>
       )}
@@ -471,8 +441,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
       {/* ── Loading ── */}
       {loading && !sessions.length && (
         <div className="flex items-center justify-center py-16 gap-2 text-slate-400">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span className="text-sm">Loading log…</span>
+          <Loader2 className="w-5 h-5 animate-spin" /><span className="text-sm">Loading log…</span>
         </div>
       )}
 
@@ -499,6 +468,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
                 <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">HC</th>
                 <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Hours</th>
                 <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">IAA</th>
+                <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">REV</th>
                 <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">2P</th>
                 <th className="text-center px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">PHI</th>
                 <th className="text-right  px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">1P Output</th>
@@ -517,10 +487,10 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
                   return (
                     <EditRow
                       key={s.id}
-                      session={s}
+                      createdAt={s.created_at}
                       draft={editDraft}
                       saving={editSaving}
-                      onChange={setEditDraft}
+                      onChange={handleDraftChange}
                       onSave={saveEdit}
                       onCancel={cancelEdit}
                     />
@@ -529,66 +499,41 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
 
                 return (
                   <tr key={s.id} className="hover:bg-slate-50 transition-colors group">
-
                     <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">
                       {format(new Date(s.created_at), 'dd MMM yyyy HH:mm')}
                     </td>
-
                     <td className="px-3 py-3">
                       <span className="font-mono text-xs font-semibold text-slate-700">{s.locale}</span>
                     </td>
-
                     <td className="px-3 py-3 text-xs text-slate-600">{s.workflow}</td>
-
                     <td className="px-3 py-3 text-center text-xs text-slate-600">{s.hc}</td>
-
                     <td className="px-3 py-3 text-center text-xs text-slate-600">{s.total_hours}h</td>
-
-                    <td className="px-3 py-3 text-center text-xs text-slate-400">
-                      {s.iaa_days > 0 ? `${s.iaa_days}d` : '—'}
-                    </td>
-
-                    <td className="px-3 py-3 text-center text-xs text-slate-400">
-                      {s.p2_days > 0 ? `${s.p2_days}d` : '—'}
-                    </td>
-
-                    <td className="px-3 py-3 text-center text-xs text-slate-400">
-                      {s.phi_days > 0 ? `${s.phi_days}d` : '—'}
-                    </td>
-
+                    <td className="px-3 py-3 text-center text-xs text-slate-400">{s.iaa_days > 0 ? `${s.iaa_days}d` : '—'}</td>
+                    <td className="px-3 py-3 text-center text-xs text-slate-400">{(s.rev_days ?? 0) > 0 ? `${s.rev_days}d` : '—'}</td>
+                    <td className="px-3 py-3 text-center text-xs text-slate-400">{s.p2_days  > 0 ? `${s.p2_days}d`  : '—'}</td>
+                    <td className="px-3 py-3 text-center text-xs text-slate-400">{s.phi_days > 0 ? `${s.phi_days}d` : '—'}</td>
                     <td className="px-3 py-3 text-right">
-                      <span className="text-xs font-bold text-slate-800">
-                        {s.output_full.toLocaleString()}
-                      </span>
+                      <span className="text-xs font-bold text-slate-800">{s.output_full.toLocaleString()}</span>
                     </td>
-
                     <td className="px-3 py-3 text-right text-xs text-slate-500">
                       {s.output_buffered > 0 ? s.output_buffered.toLocaleString() : '—'}
                     </td>
-
                     <td className="px-3 py-3">
-                      <span className={cn(
-                        'text-[9px] font-semibold px-1.5 py-0.5 rounded-full',
-                        UNIT_BADGE[s.unit] ?? 'bg-slate-100 text-slate-500',
-                      )}>
+                      <span className={cn('text-[9px] font-semibold px-1.5 py-0.5 rounded-full',
+                        UNIT_BADGE[s.unit] ?? 'bg-slate-100 text-slate-500')}>
                         {s.unit}
                       </span>
                     </td>
-
                     <td className="px-3 py-3 text-xs text-slate-500 max-w-[140px] truncate">
                       {s.label ?? <span className="text-slate-300">—</span>}
                     </td>
-
                     <td className="px-5 py-3 text-xs whitespace-nowrap">
                       {s.date_from || s.date_to ? (
-                        <span className="text-brand-700 font-medium">
-                          {fmtRange(s.date_from, s.date_to)}
-                        </span>
+                        <span className="text-brand-700 font-medium">{fmtRange(s.date_from, s.date_to)}</span>
                       ) : (
                         <span className="text-slate-300">—</span>
                       )}
                     </td>
-
                     {isAdmin && (
                       <td className="px-3 py-3 text-right">
                         <button
@@ -602,14 +547,13 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
                         </button>
                       </td>
                     )}
-
                   </tr>
                 )
               })}
             </tbody>
           </table>
 
-          <div className="px-5 py-2 border-t border-slate-100 flex items-center justify-between">
+          <div className="px-5 py-2 border-t border-slate-100">
             <p className="text-[11px] text-slate-400">
               {filtered.length < sessions.length
                 ? `Showing ${filtered.length} of ${sessions.length} sessions`
@@ -627,7 +571,7 @@ export function ProjectionHistory({ isAdmin }: { isAdmin: boolean }) {
 
       <p className="text-[11px] text-slate-400">
         Full record of all production calculations saved by you, newest first.
-        {isAdmin && ' Admins can edit any field by clicking ✏ on a row.'}
+        {isAdmin && ' Admins can edit any field by clicking ✏ on a row. Changing days auto-recalculates the output.'}
       </p>
     </div>
   )

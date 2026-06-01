@@ -21,6 +21,7 @@ import { db } from '@/lib/db'
 //     iaa_days     numeric     NOT NULL,
 //     p2_days      numeric     NOT NULL,
 //     phi_days     numeric     NOT NULL,
+//     rev_days     numeric     NOT NULL DEFAULT 0,
 //     output_full  numeric     NOT NULL,
 //     output_buf   numeric     NOT NULL,
 //     unit         text        NOT NULL,
@@ -29,6 +30,10 @@ import { db } from '@/lib/db'
 //   );
 //   CREATE INDEX idx_calc_sessions_user
 //     ON calculator_sessions (user_id, created_at DESC);
+//
+// Migration (if table already exists):
+//   ALTER TABLE calculator_sessions
+//     ADD COLUMN IF NOT EXISTS rev_days numeric NOT NULL DEFAULT 0;
 //
 // GET  — returns the last 20 sessions for the authenticated user
 // POST — saves a new session (any authenticated user)
@@ -69,7 +74,7 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  const { locale, workflow, hc, total_hours, iaa_days, p2_days, phi_days,
+  const { locale, workflow, hc, total_hours, iaa_days, p2_days, phi_days, rev_days,
           output_full, output_buffered, unit, label, date_from, date_to } = body
 
   // Basic validation
@@ -92,6 +97,7 @@ export async function POST(req: NextRequest) {
       iaa_days:         Math.round(Number(iaa_days)        || 0),
       p2_days:          Math.round(Number(p2_days)         || 0),
       phi_days:         Math.round(Number(phi_days)        || 0),
+      rev_days:         Math.round(Number(rev_days)        || 0),
       output_full:      Number(output_full),
       output_buffered:  Number(output_buffered)            || 0,
       unit:        String(unit),
